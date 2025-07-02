@@ -1,56 +1,64 @@
-# Backend API Server
+# VeriGate Access Control - Backend
 
-The backend API server for the QR Code-based Accreditation System.
+This is the backend API server for the VeriGate Access Control system.
 
-## 🏗️ Architecture
+## 🚀 Features
 
-- **Framework**: Node.js with Express and TypeScript
-- **Database**: PostgreSQL with connection pooling
-- **Caching**: Redis integration (optional)
-- **Security**: Argon2id password hashing, JWT authentication, rate limiting
+- **Central Data Management**: Manages all users, access levels, and areas.
+- **Synchronization**: Provides endpoints for mobile clients to sync their local databases.
+- **QR Code Management**: Generates and validates secure QR codes.
+- **Audit Logging**: Records all access attempts and system events.
+- **RESTful API**: Exposes a comprehensive API for all client applications.
 
-## 🚀 Quick Start
+## 🛠️ Tech Stack
+
+- **Node.js**: JavaScript runtime environment
+- **TypeScript**: Typed superset of JavaScript
+- **Express**: Web framework for Node.js
+- **PostgreSQL**: Primary relational database
+- **Redis**: In-memory data store for caching and session management
+
+## ⚙️ Configuration
+
+Create a `.env` file in the `backend` directory with the following variables:
 
 ```bash
-# Install dependencies
-pnpm install
+# Database
+DB_HOST=localhost
+DB_PORT=5432
+DB_NAME=verigate_access_control
+DB_USER=postgres
+DB_PASSWORD=your_secure_password
 
-# Setup environment
-cp .env.example .env
-# Edit .env with your database credentials
+# Redis (Optional)
+REDIS_HOST=localhost
+REDIS_PORT=6379
+REDIS_PASSWORD=
 
-# Setup database
-pnpm run setup:db
+# JWT Security
+JWT_SECRET=your_production_jwt_secret_256_bits_minimum
+JWT_REFRESH_SECRET=your_production_refresh_secret
+JWT_EXPIRE_TIME=1h
+JWT_REFRESH_EXPIRE_TIME=7d
 
-# Seed test data
-pnpm run seed:db
+# Encryption
+ENCRYPTION_KEY=your_32_character_encryption_key
+PEPPER_SECRET=additional_password_security_pepper
 
-# Start development server
-pnpm run dev
+# QR Configuration
+QR_CODE_EXPIRE_MINUTES=60
+QR_CODE_REFRESH_INTERVAL=30
+
+# Rate Limiting
+RATE_LIMIT_WINDOW_MS=900000
+RATE_LIMIT_MAX_REQUESTS=100
 ```
 
-## 📚 API Endpoints
+## 📦 Scripts
 
-- `POST /api/auth/register` - Register new user
-- `POST /api/auth/login` - User login
-- `POST /api/auth/refresh` - Refresh access token
-- `GET /api/users/me` - Get current user profile
-- `GET /api/qr/generate` - Generate QR code for user
-- `POST /api/scan/verify` - Verify scanned QR code
-- `GET /api/admin/*` - Admin endpoints (admin only)
-
-## 🔐 Test Users
-
-- `admin@test.com / password123` (Admin)
-- `scanner@test.com / password123` (Scanner volunteer)
-- `vip@test.com / password123` (VIP user)
-- `staff@test.com / password123` (Staff member)
-- `general@test.com / password123` (General user)
-
-## 🛠️ Development
-
-```bash
-pnpm run dev          # Start development server
-pnpm run build        # Build for production
-pnpm run type-check   # TypeScript type checking
-pnpm run test         # Run tests
+- `pnpm run dev`: Start the development server with hot-reloading.
+- `pnpm run build`: Compile TypeScript to JavaScript for production.
+- `pnpm run start`: Run the compiled JavaScript.
+- `pnpm run setup:db`: Create the database tables and indexes.
+- `pnpm run seed:db`: Populate the database with test data.
+- `pnpm run type-check`: Validate TypeScript types.
