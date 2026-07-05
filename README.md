@@ -4,19 +4,32 @@ This is the backend API server for the VeriGate Access Control system.
 
 ## 🚀 Features
 
-- **Central Data Management**: Manages all users, access levels, and areas.
-- **Synchronization**: Provides endpoints for mobile clients to sync their local databases.
-- **QR Code Management**: Generates and validates secure QR codes.
-- **Audit Logging**: Records all access attempts and system events.
-- **RESTful API**: Exposes a comprehensive API for all client applications.
+- **Multi-event tenancy**: `events` is first-class; access levels, areas, assignments, and scan logs are all scoped to an event. Membership is **multi-event** — a user can belong to more than one event over time (see `event_members`), separate from per-area `access_assignments`.
+- **Real QR verification, one path**: `services/qrVerification.ts` is the single real verification implementation (signature + expiry + DB-backed access-assignment lookup), used by both `/api/scan/verify` and the deprecated `/api/qr/verify` alias. No hardcoded identities anywhere.
+- **Full CRUD**: users (+ bulk CSV import/export), events, areas, access levels, access assignments, incidents, and emergency overrides.
+- **Redis caching (fail-open)**: hot reads (sync payloads, admin dashboard, analytics) are cached with short TTLs and explicit invalidation on writes; a missing/unreachable Redis degrades to Postgres, never a 500 — see "Caching" below.
+- **Notifications**: Android push is real (Firebase Cloud Messaging via `firebase-admin`); iOS push is fully implemented over raw HTTP/2 + JWT provider tokens but gated behind `APNS_ENABLED` (default off, since it needs a paid Apple Developer account).
+- **Sync hardening**: delta sync (`/api/sync/check-updates`), client-generated `device_scan_id` de-duplication for scan-log uploads, and a `device_sync_status` heartbeat for the dashboard's real-time monitor.
 
 ## 🛠️ Tech Stack
 
-- **Node.js**: JavaScript runtime environment
-- **TypeScript**: Typed superset of JavaScript
-- **Express**: Web framework for Node.js
-- **PostgreSQL**: Primary relational database
-- **Redis**: In-memory data store for caching and session management
+- **Node.js** + **TypeScript**, **Express**, **PostgreSQL**, **Redis** (`argon2` for password hashing, `jsonwebtoken` for JWT, `express-validator` for input validation — no ORM, raw `pg`)
+
+## 🗄️ Schema (source of truth: `server/scripts/setup-database.ts`)
+
+`events`, `event_members`, `users`, `access_levels`, `areas`, `access_assignments`, `scan_logs`, `device_tokens`, `device_sync_status`, `incidents`, `emergency_overrides`. Upgrading an existing (pre-events) database? Run `npm run migrate:events` — it's idempotent and preserves all existing data under an auto-created "Default Event".
+
+## 🧰 Caching (Redis, fail-open)
+
+| Cache key | TTL | Invalidated by |
+|---|---|---|
+| `sync:users-database:<event_id>` | 30s | access-level/assignment writes |
+| `sync:areas-database:<event_id>` | 300s | area writes |
+| `event:<event_id>:dashboard` | 15s | TTL only (scans arrive continuously) |
+| `analytics:<event_id>:scan-volume` | 60s | TTL only |
+| `analytics:<event_id>:breakdown` | 60s | area/access-level/assignment writes |
+
+If Redis is down, every one of these reads falls straight through to Postgres — `getCache`/`setCache` swallow errors and return `null`/no-op.
 
 ## ⚙️ Configuration
 
@@ -48,17 +61,34 @@ PEPPER_SECRET=additional_password_security_pepper
 # QR Configuration
 QR_CODE_EXPIRE_MINUTES=60
 QR_CODE_REFRESH_INTERVAL=30
+# Must match the hardcoded secret in verigate-pass/verigate-scan's DatabaseService
+QR_HMAC_SECRET=event_secret_key_2024
 
 # Rate Limiting
 RATE_LIMIT_WINDOW_MS=900000
 RATE_LIMIT_MAX_REQUESTS=100
+
+# Push notifications - Android FCM (free tier)
+FCM_PROJECT_ID=
+FCM_CLIENT_EMAIL=
+FCM_PRIVATE_KEY=
+
+# Push notifications - iOS APNs (gated, default off - needs a paid Apple Developer account)
+APNS_ENABLED=false
+APNS_KEY_PATH=
+APNS_KEY_ID=
+APNS_TEAM_ID=
+APNS_BUNDLE_ID=
+APNS_PRODUCTION=false
 ```
 
 ## 📦 Scripts
 
-- `pnpm run dev`: Start the development server with hot-reloading.
-- `pnpm run build`: Compile TypeScript to JavaScript for production.
-- `pnpm run start`: Run the compiled JavaScript.
-- `pnpm run setup:db`: Create the database tables and indexes.
-- `pnpm run seed:db`: Populate the database with test data.
-- `pnpm run type-check`: Validate TypeScript types.
+- `npm run dev`: Start the development server with hot-reloading.
+- `npm run build`: Compile TypeScript to JavaScript for production.
+- `npm start`: Run the compiled JavaScript.
+- `npm run setup:db`: Create a fresh database (full current schema, including events).
+- `npm run migrate:events`: Upgrade an existing pre-events database in place (idempotent).
+- `npm run seed:db`: Populate the database with a demo event + test data.
+- `npm run type-check`: Validate TypeScript types.
+- `npm test`: Run the Jest test suite (route + service tests, mocked DB/Redis).

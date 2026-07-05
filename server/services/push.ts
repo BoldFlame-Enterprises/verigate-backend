@@ -84,36 +84,86 @@ async function sendAndroid(tokens: string[], message: PushMessage): Promise<{ se
   return { sent, failed, invalidTokens };
 }
 
+let apnsProviderJwt: { token: string; issuedAt: number } | null = null;
+
+function getApnsProviderToken(): string {
+  // APNs provider tokens are valid up to 1 hour; refresh a bit early.
+  if (apnsProviderJwt && Date.now() - apnsProviderJwt.issuedAt < 55 * 60 * 1000) {
+    return apnsProviderJwt.token;
+  }
+
+  const jwt = require('jsonwebtoken');
+  const fs = require('fs');
+  const key = fs.readFileSync(process.env.APNS_KEY_PATH as string, 'utf8');
+
+  const token = jwt.sign({}, key, {
+    algorithm: 'ES256',
+    issuer: process.env.APNS_TEAM_ID,
+    keyid: process.env.APNS_KEY_ID,
+    expiresIn: '55m',
+  });
+
+  apnsProviderJwt = { token, issuedAt: Date.now() };
+  return token;
+}
+
+/**
+ * Sends a single APNs push over HTTP/2 using Node's built-in `http2` module
+ * and a JWT provider token (Apple's modern token-based auth) instead of a
+ * third-party APNs SDK (the `apn` npm package is unmaintained and drags in a
+ * broken legacy sub-dependency). Only ever reached when APNS_ENABLED=true.
+ */
+function sendOneIos(host: string, deviceToken: string, message: PushMessage): Promise<boolean> {
+  return new Promise((resolve) => {
+    const http2 = require('http2');
+    const client = http2.connect(host);
+    client.on('error', () => resolve(false));
+
+    const payload = JSON.stringify({
+      aps: { alert: { title: message.title, body: message.body }, sound: 'default' },
+      ...(message.data || {}),
+    });
+
+    const req = client.request({
+      ':method': 'POST',
+      ':path': `/3/device/${deviceToken}`,
+      authorization: `bearer ${getApnsProviderToken()}`,
+      'apns-topic': process.env.APNS_BUNDLE_ID,
+      'apns-push-type': 'alert',
+      'content-type': 'application/json',
+    });
+
+    let status = 0;
+    req.on('response', (headers: Record<string, any>) => {
+      status = headers[':status'];
+    });
+    req.on('end', () => {
+      client.close();
+      resolve(status === 200);
+    });
+    req.on('error', () => {
+      client.close();
+      resolve(false);
+    });
+
+    req.write(payload);
+    req.end();
+  });
+}
+
 async function sendIos(tokens: string[], message: PushMessage): Promise<{ sent: number; failed: number }> {
   const enabled = process.env.APNS_ENABLED === 'true';
   if (!enabled || tokens.length === 0) {
     return { sent: 0, failed: 0 };
   }
 
-  // Requires an Apple Developer Program membership ($99/yr) + APNs auth key.
-  // Lazy-required so `apn` never needs to be installed/configured unless
-  // APNS_ENABLED=true.
-  const apn = require('apn');
+  const host = process.env.APNS_PRODUCTION === 'true'
+    ? 'https://api.push.apple.com'
+    : 'https://api.sandbox.push.apple.com';
 
-  const options = {
-    token: {
-      key: process.env.APNS_KEY_PATH as string,
-      keyId: process.env.APNS_KEY_ID as string,
-      teamId: process.env.APNS_TEAM_ID as string,
-    },
-    production: process.env.APNS_PRODUCTION === 'true',
-  };
-
-  const provider = new apn.Provider(options);
-  const note = new apn.Notification();
-  note.alert = { title: message.title, body: message.body };
-  note.payload = message.data || {};
-  note.topic = process.env.APNS_BUNDLE_ID as string;
-
-  const result = await provider.send(note, tokens);
-  provider.shutdown();
-
-  return { sent: result.sent.length, failed: result.failed.length };
+  const results = await Promise.all(tokens.map((token) => sendOneIos(host, token, message)));
+  const sent = results.filter(Boolean).length;
+  return { sent, failed: results.length - sent };
 }
 
 /**

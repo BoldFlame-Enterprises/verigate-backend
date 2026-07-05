@@ -32,9 +32,6 @@
     "qrcode": "^1.5.3",
     "redis": "^4.6.8"
   },
-  "optionalDependencies": {
-    "apn": "^2.2.0"
-  },
   "devDependencies": {
     "@types/compression": "^1.7.3",
     "@types/cors": "^2.8.14",
