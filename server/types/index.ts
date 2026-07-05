@@ -12,8 +12,41 @@ export interface User {
   updated_at: Date;
 }
 
+export interface Event {
+  id: number;
+  name: string;
+  slug: string;
+  description: string | null;
+  starts_at: Date | null;
+  ends_at: Date | null;
+  is_active: boolean;
+  created_at: Date;
+  updated_at: Date;
+}
+
+export interface EventMember {
+  id: number;
+  event_id: number;
+  user_id: number;
+  role_in_event: string;
+  is_active: boolean;
+  joined_at: Date;
+}
+
+export interface DeviceToken {
+  id: number;
+  user_id: number;
+  event_id: number;
+  token: string;
+  platform: 'android' | 'ios';
+  is_active: boolean;
+  created_at: Date;
+  updated_at: Date;
+}
+
 export interface AccessLevel {
   id: number;
+  event_id: number;
   name: string;
   description: string;
   priority: number;
@@ -22,6 +55,7 @@ export interface AccessLevel {
 
 export interface Area {
   id: number;
+  event_id: number;
   name: string;
   description: string;
   requires_scan: boolean;
@@ -30,6 +64,7 @@ export interface Area {
 
 export interface AccessAssignment {
   id: number;
+  event_id: number;
   user_id: number;
   access_level_id: number;
   area_id: number;
@@ -40,6 +75,7 @@ export interface AccessAssignment {
 
 export interface ScanLog {
   id: number;
+  event_id: number;
   user_id: number;
   area_id: number;
   scanner_user_id: number;
@@ -109,12 +145,21 @@ export interface UpdateUserRequest {
 export interface ScanRequest {
   qr_code: string;
   area_id: number;
+  event_id: number;
   device_info: string;
 }
 
 export interface QRGenerateRequest {
   user_id: number;
   device_fingerprint: string;
+}
+
+export interface CreateEventRequest {
+  name: string;
+  slug: string;
+  description?: string;
+  starts_at?: string;
+  ends_at?: string;
 }
 
 export enum UserRole {

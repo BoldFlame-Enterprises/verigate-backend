@@ -6,12 +6,11 @@
   "scripts": {
     "start": "node dist/index.js",
     "dev": "ts-node-dev --respawn --transpile-only server/index.ts",
-    "build": "npm run build:server && npm run build:admin",
+    "build": "npm run build:server",
     "build:server": "tsc",
-    "build:admin": "cd admin-dashboard && npm run build",
-    "install:all": "npm install && cd admin-dashboard && npm install && cd ../qr-generator-app && npm install && cd ../scanner-app && npm install",
     "setup:db": "ts-node server/scripts/setup-database.ts",
     "seed:db": "ts-node server/scripts/seed-database.ts",
+    "migrate:events": "ts-node server/scripts/migrate-to-v2-events.ts",
     "test": "jest",
     "type-check": "tsc --noEmit"
   },
@@ -24,6 +23,7 @@
     "express-rate-limit": "^6.10.0",
     "express-slow-down": "^1.6.0",
     "express-validator": "^7.0.1",
+    "firebase-admin": "^12.6.0",
     "helmet": "^7.1.0",
     "jsonwebtoken": "^9.0.2",
     "morgan": "^1.10.0",
@@ -31,6 +31,9 @@
     "pg": "^8.11.3",
     "qrcode": "^1.5.3",
     "redis": "^4.6.8"
+  },
+  "optionalDependencies": {
+    "apn": "^2.2.0"
   },
   "devDependencies": {
     "@types/compression": "^1.7.3",
@@ -47,6 +50,7 @@
     "jest": "^29.7.0",
     "nodemon": "^3.0.1",
     "supertest": "^6.3.3",
+    "ts-jest": "^29.1.1",
     "ts-node": "^10.9.1",
     "ts-node-dev": "^2.0.0",
     "tsconfig-paths": "^4.2.0",

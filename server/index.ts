@@ -5,7 +5,6 @@ import morgan from 'morgan';
 import compression from 'compression';
 import rateLimit from 'express-rate-limit';
 import slowDown from 'express-slow-down';
-import path from 'path';
 import dotenv from 'dotenv';
 
 // Load environment variables
@@ -15,12 +14,16 @@ import { connectDB } from './config/database';
 import { connectRedis } from './config/redis';
 import authRoutes from './routes/auth';
 import userRoutes from './routes/users';
+import eventRoutes from './routes/events';
 import accessRoutes from './routes/access';
 import areaRoutes from './routes/areas';
 import qrRoutes from './routes/qr';
 import scanRoutes from './routes/scan';
 import adminRoutes from './routes/admin';
 import syncRoutes from './routes/sync';
+import analyticsRoutes from './routes/analytics';
+import notificationRoutes from './routes/notifications';
+import incidentRoutes from './routes/incidents';
 import { errorHandler } from './middleware/errorHandler';
 import { authenticateToken } from './middleware/auth';
 
@@ -98,22 +101,22 @@ app.get('/health', (_req, res) => {
 // API Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/users', authenticateToken, userRoutes);
+app.use('/api/events', authenticateToken, eventRoutes);
 app.use('/api/access', authenticateToken, accessRoutes);
 app.use('/api/areas', authenticateToken, areaRoutes);
 app.use('/api/qr', authenticateToken, qrRoutes);
 app.use('/api/scan', authenticateToken, scanRoutes);
 app.use('/api/admin', authenticateToken, adminRoutes);
 app.use('/api/sync', authenticateToken, syncRoutes);
+app.use('/api/analytics', authenticateToken, analyticsRoutes);
+app.use('/api/notifications', authenticateToken, notificationRoutes);
+app.use('/api/incidents', authenticateToken, incidentRoutes);
 
-// Serve static files from admin dashboard
-app.use(express.static('admin-dashboard/build'));
-
-// Catch-all handler for React Router
-app.get('*', (req, res) => {
-  if (req.path.startsWith('/api/')) {
-    return res.status(404).json({ error: 'API endpoint not found' });
-  }
-  return res.sendFile(path.join(__dirname, '../admin-dashboard/build/index.html'));
+// The web dashboard (verigate-dashboard) is a separate Vite app run on its
+// own port during development and deployed independently in production; this
+// API server does not serve it statically. Any unmatched route is a 404.
+app.use((req, res) => {
+  res.status(404).json({ error: `Not found - ${req.originalUrl}` });
 });
 
 // Error handling middleware

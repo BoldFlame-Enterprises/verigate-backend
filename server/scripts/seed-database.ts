@@ -21,9 +21,21 @@ const seedData = async () => {
     // Clear existing data
     await client.query('DELETE FROM access_assignments');
     await client.query('DELETE FROM scan_logs');
+    await client.query('DELETE FROM event_members');
     await client.query('DELETE FROM users WHERE email LIKE \'%@test.com\'');
     await client.query('DELETE FROM access_levels');
     await client.query('DELETE FROM areas');
+    await client.query('DELETE FROM events');
+
+    // Seed a demo event
+    console.log('🎫 Seeding demo event...');
+    const eventResult = await client.query(
+      `INSERT INTO events (name, slug, description, starts_at, ends_at, is_active)
+       VALUES ($1, $2, $3, NOW(), NOW() + INTERVAL '3 days', true)
+       RETURNING id`,
+      ['VeriGate Demo Championship', 'demo-championship', 'Seeded demo event for local development']
+    );
+    const eventId = eventResult.rows[0].id;
 
     // Seed Access Levels
     console.log('📝 Seeding access levels...');
@@ -37,8 +49,8 @@ const seedData = async () => {
 
     for (const level of accessLevels) {
       await client.query(
-        'INSERT INTO access_levels (name, description, priority) VALUES ($1, $2, $3)',
-        [level.name, level.description, level.priority]
+        'INSERT INTO access_levels (event_id, name, description, priority) VALUES ($1, $2, $3, $4)',
+        [eventId, level.name, level.description, level.priority]
       );
     }
 
@@ -56,8 +68,8 @@ const seedData = async () => {
 
     for (const area of areas) {
       await client.query(
-        'INSERT INTO areas (name, description, requires_scan) VALUES ($1, $2, $3)',
-        [area.name, area.description, area.requires_scan]
+        'INSERT INTO areas (event_id, name, description, requires_scan) VALUES ($1, $2, $3, $4)',
+        [eventId, area.name, area.description, area.requires_scan]
       );
     }
 
@@ -134,25 +146,46 @@ const seedData = async () => {
       const userResult = await client.query('SELECT id FROM users WHERE email = $1', [assignment.userEmail]);
       const userId = userResult.rows[0]?.id;
 
-      // Get access level ID
-      const levelResult = await client.query('SELECT id FROM access_levels WHERE name = $1', [assignment.accessLevel]);
+      // Get access level ID (scoped to the demo event)
+      const levelResult = await client.query('SELECT id FROM access_levels WHERE event_id = $1 AND name = $2', [eventId, assignment.accessLevel]);
       const levelId = levelResult.rows[0]?.id;
+
+      // Record event membership
+      if (userId) {
+        await client.query(
+          `INSERT INTO event_members (event_id, user_id, role_in_event, is_active)
+           VALUES ($1, $2, 'attendee', true)
+           ON CONFLICT (event_id, user_id) DO NOTHING`,
+          [eventId, userId]
+        );
+      }
 
       if (userId && levelId) {
         for (const areaName of assignment.areas) {
-          // Get area ID
-          const areaResult = await client.query('SELECT id FROM areas WHERE name = $1', [areaName]);
+          // Get area ID (scoped to the demo event)
+          const areaResult = await client.query('SELECT id FROM areas WHERE event_id = $1 AND name = $2', [eventId, areaName]);
           const areaId = areaResult.rows[0]?.id;
 
           if (areaId) {
             await client.query(
-              `INSERT INTO access_assignments (user_id, access_level_id, area_id, valid_from, valid_until, is_active) 
-               VALUES ($1, $2, $3, NOW(), NOW() + INTERVAL '1 year', true)`,
-              [userId, levelId, areaId]
+              `INSERT INTO access_assignments (event_id, user_id, access_level_id, area_id, valid_from, valid_until, is_active)
+               VALUES ($1, $2, $3, $4, NOW(), NOW() + INTERVAL '1 year', true)`,
+              [eventId, userId, levelId, areaId]
             );
           }
         }
       }
+    }
+
+    // Also register the admin as an event member (so the dashboard can select them for the event)
+    const adminResult = await client.query(`SELECT id FROM users WHERE email = 'admin@test.com'`);
+    if (adminResult.rows[0]?.id) {
+      await client.query(
+        `INSERT INTO event_members (event_id, user_id, role_in_event, is_active)
+         VALUES ($1, $2, 'admin', true)
+         ON CONFLICT (event_id, user_id) DO NOTHING`,
+        [eventId, adminResult.rows[0].id]
+      );
     }
 
     console.log('✅ Database seeding completed successfully!');
