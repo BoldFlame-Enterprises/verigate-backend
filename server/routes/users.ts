@@ -9,12 +9,24 @@ const router = Router();
 
 const USER_COLUMNS = `id, email, name, phone, device_id, role, is_active, created_at, updated_at`;
 
-router.get('/me', (req: AuthRequest, res: Response) => {
-  const response: APIResponse = {
-    success: true,
-    data: req.user
-  };
-  res.json(response);
+router.get('/me', async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const db = getDB();
+    const result = await db.query(
+      `SELECT id, email, name, phone, role, is_active FROM users WHERE id = $1`,
+      [req.user?.id]
+    );
+
+    if (result.rows.length === 0) {
+      res.status(404).json({ success: false, error: 'User not found' } as APIResponse);
+      return;
+    }
+
+    res.json({ success: true, data: result.rows[0] } as APIResponse);
+  } catch (error) {
+    console.error('Error getting current user:', error);
+    res.status(500).json({ success: false, error: 'Failed to get current user' } as APIResponse);
+  }
 });
 
 // List users (admin only)

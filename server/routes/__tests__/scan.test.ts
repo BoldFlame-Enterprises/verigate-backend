@@ -53,6 +53,18 @@ describe('POST /api/scan/verify', () => {
     );
   });
 
+  it('rejects a caller with role "user" (only scanner/admin may verify)', async () => {
+    const app = buildApp({ id: 3, email: 'attendee@test.com', role: 'user' });
+    const res = await request(app).post('/api/scan/verify').send({
+      qr_code: 'signed-qr-payload',
+      area_id: 3,
+      event_id: 1,
+    });
+
+    expect(res.status).toBe(403);
+    expect(verifyQrForArea).not.toHaveBeenCalled();
+  });
+
   it('logs a denial with the real failure reason', async () => {
     const query = jest.fn().mockResolvedValue({ rows: [{ id: 2 }] });
     (getDB as jest.Mock).mockReturnValue({ query });

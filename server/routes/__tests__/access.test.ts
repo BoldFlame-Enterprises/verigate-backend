@@ -42,6 +42,7 @@ describe('GET /api/access', () => {
 describe('POST /api/access/assignments', () => {
   it('upserts respecting the (user_id, area_id, event_id) constraint and invalidates caches', async () => {
     const query = jest.fn()
+      .mockResolvedValueOnce({ rows: [{ level_ok: 1, area_ok: 1 }] }) // cross-event scope check
       .mockResolvedValueOnce({ rows: [] }) // event_members insert
       .mockResolvedValueOnce({ rows: [{ id: 10, event_id: 5, user_id: 2, access_level_id: 1, area_id: 3, is_active: true }] });
     (getDB as jest.Mock).mockReturnValue({ query });
@@ -52,7 +53,20 @@ describe('POST /api/access/assignments', () => {
     });
 
     expect(res.status).toBe(201);
-    expect(query.mock.calls[1][0]).toContain('ON CONFLICT (user_id, area_id, event_id)');
+    expect(query.mock.calls[2][0]).toContain('ON CONFLICT (user_id, area_id, event_id)');
     expect(deleteCache).toHaveBeenCalledWith('sync:users-database:5');
+  });
+
+  it('rejects an access_level_id/area_id that belongs to a different event', async () => {
+    const query = jest.fn().mockResolvedValueOnce({ rows: [{ level_ok: null, area_ok: 1 }] });
+    (getDB as jest.Mock).mockReturnValue({ query });
+
+    const app = buildApp();
+    const res = await request(app).post('/api/access/assignments').send({
+      event_id: 5, user_id: 2, access_level_id: 999, area_id: 3
+    });
+
+    expect(res.status).toBe(400);
+    expect(query).toHaveBeenCalledTimes(1);
   });
 });

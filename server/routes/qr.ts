@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { body, query, validationResult } from 'express-validator';
 import { getDB } from '../config/database';
+import { requireScannerOrAdmin } from '../middleware/auth';
 import { AuthRequest, APIResponse } from '../types';
 import { signQrData, verifyQrForArea } from '../services/qrVerification';
 
@@ -95,6 +96,7 @@ router.get('/generate',
 // calling /api/qr/verify; delegates to the exact same verification function
 // as /api/scan/verify so there is only one real verification path.
 router.post('/verify',
+  requireScannerOrAdmin,
   [
     body('qr_content').isString().notEmpty(),
     body('area_id').isInt(),

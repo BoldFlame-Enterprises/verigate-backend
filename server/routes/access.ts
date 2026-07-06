@@ -254,6 +254,19 @@ router.post('/assignments',
       const { event_id, user_id, access_level_id, area_id, valid_until } = req.body;
       const db = getDB();
 
+      // Reject cross-event mismatches: the access level and area must both
+      // actually belong to the event being assigned to.
+      const scopeCheck = await db.query(
+        `SELECT
+           (SELECT 1 FROM access_levels WHERE id = $1 AND event_id = $2) as level_ok,
+           (SELECT 1 FROM areas WHERE id = $3 AND event_id = $2) as area_ok`,
+        [access_level_id, event_id, area_id]
+      );
+      if (!scopeCheck.rows[0].level_ok || !scopeCheck.rows[0].area_ok) {
+        res.status(400).json({ success: false, error: 'access_level_id and area_id must belong to the specified event_id' } as APIResponse);
+        return;
+      }
+
       // Ensure the user is a member of this event (auto-join on first assignment).
       await db.query(
         `INSERT INTO event_members (event_id, user_id, role_in_event, is_active)

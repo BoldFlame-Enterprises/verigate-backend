@@ -1,6 +1,7 @@
 import { Router, Response } from 'express';
 import { body, validationResult } from 'express-validator';
 import { getDB } from '../config/database';
+import { requireScannerOrAdmin } from '../middleware/auth';
 import { AuthRequest, APIResponse } from '../types';
 import { verifyQrForArea } from '../services/qrVerification';
 
@@ -11,6 +12,7 @@ const router = Router();
 // inconclusive (e.g. user not yet synced locally) so it re-validates the
 // signed QR payload and looks up the actual access assignment.
 router.post('/verify',
+  requireScannerOrAdmin,
   [
     body('qr_code').isString().notEmpty(),
     body('area_id').isInt(),

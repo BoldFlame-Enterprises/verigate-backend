@@ -61,8 +61,8 @@ const migrate = async () => {
     await client.query(`
       CREATE TABLE IF NOT EXISTS event_members (
         id SERIAL PRIMARY KEY,
-        event_id INTEGER REFERENCES events(id) ON DELETE CASCADE,
-        user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+        event_id INTEGER REFERENCES events(id) ON DELETE CASCADE NOT NULL,
+        user_id INTEGER REFERENCES users(id) ON DELETE CASCADE NOT NULL,
         role_in_event VARCHAR(50) DEFAULT 'attendee',
         is_active BOOLEAN DEFAULT true,
         joined_at TIMESTAMP DEFAULT NOW(),
@@ -73,8 +73,8 @@ const migrate = async () => {
     await client.query(`
       CREATE TABLE IF NOT EXISTS device_tokens (
         id SERIAL PRIMARY KEY,
-        user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
-        event_id INTEGER REFERENCES events(id) ON DELETE CASCADE,
+        user_id INTEGER REFERENCES users(id) ON DELETE CASCADE NOT NULL,
+        event_id INTEGER REFERENCES events(id) ON DELETE CASCADE NOT NULL,
         token TEXT NOT NULL,
         platform VARCHAR(20) NOT NULL CHECK (platform IN ('android', 'ios')),
         is_active BOOLEAN DEFAULT true,
@@ -103,7 +103,7 @@ const migrate = async () => {
     await client.query(`
       CREATE TABLE IF NOT EXISTS incidents (
         id SERIAL PRIMARY KEY,
-        event_id INTEGER REFERENCES events(id) ON DELETE CASCADE,
+        event_id INTEGER REFERENCES events(id) ON DELETE CASCADE NOT NULL,
         reporter_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
         area_id INTEGER REFERENCES areas(id) ON DELETE SET NULL,
         category VARCHAR(50) NOT NULL DEFAULT 'other',
@@ -117,9 +117,9 @@ const migrate = async () => {
     await client.query(`
       CREATE TABLE IF NOT EXISTS emergency_overrides (
         id SERIAL PRIMARY KEY,
-        event_id INTEGER REFERENCES events(id) ON DELETE CASCADE,
+        event_id INTEGER REFERENCES events(id) ON DELETE CASCADE NOT NULL,
         user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
-        area_id INTEGER REFERENCES areas(id) ON DELETE CASCADE,
+        area_id INTEGER REFERENCES areas(id) ON DELETE CASCADE NOT NULL,
         scanner_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
         access_granted BOOLEAN NOT NULL DEFAULT true,
         reason TEXT NOT NULL,
@@ -184,7 +184,7 @@ const migrate = async () => {
     //    default event is recorded as a member of it.
     await client.query(`
       INSERT INTO event_members (event_id, user_id, role_in_event, is_active)
-      SELECT DISTINCT $1, u.id, 'attendee', true
+      SELECT DISTINCT $1::integer, u.id, 'attendee', true
       FROM users u
       ON CONFLICT (event_id, user_id) DO NOTHING
     `, [defaultEventId]);

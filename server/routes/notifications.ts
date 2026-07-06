@@ -49,11 +49,13 @@ router.post('/register-device',
 
 router.post('/unregister-device',
   [body('token').isString().notEmpty()],
-  async (req: Request, res: Response): Promise<void> => {
+  async (req: AuthRequest, res: Response): Promise<void> => {
     try {
       const { token } = req.body;
       const db = getDB();
-      await db.query(`UPDATE device_tokens SET is_active = false WHERE token = $1`, [token]);
+      // Scoped to the caller's own token so one user can't deactivate
+      // another user's device by guessing/reusing a token value.
+      await db.query(`UPDATE device_tokens SET is_active = false WHERE token = $1 AND user_id = $2`, [token, req.user?.id]);
       res.json({ success: true, data: { unregistered: true } } as APIResponse);
     } catch (error) {
       console.error('Error unregistering device token:', error);
@@ -161,15 +163,17 @@ router.get('/device-status',
       const eventId = parseInt(req.query.event_id as string, 10);
       const db = getDB();
 
+      // GREATEST (not COALESCE) so a device that's actively uploading scans
+      // but has an older regular heartbeat is still reported by its most
+      // recent activity, not misclassified as stale/offline.
       const result = await db.query(
         `SELECT ds.device_id, ds.app, ds.platform, ds.last_sync_at, ds.last_scan_upload_at,
                 ds.local_db_version, u.name as user_name,
-                (COALESCE(ds.last_sync_at, ds.last_scan_upload_at) > NOW() - INTERVAL '2 minutes') as is_stale_free,
-                EXTRACT(EPOCH FROM (NOW() - COALESCE(ds.last_sync_at, ds.last_scan_upload_at))) as seconds_since_sync
+                EXTRACT(EPOCH FROM (NOW() - GREATEST(ds.last_sync_at, ds.last_scan_upload_at))) as seconds_since_sync
          FROM device_sync_status ds
          LEFT JOIN users u ON u.id = ds.user_id
          WHERE ds.event_id = $1
-         ORDER BY COALESCE(ds.last_sync_at, ds.last_scan_upload_at) DESC NULLS LAST`,
+         ORDER BY GREATEST(ds.last_sync_at, ds.last_scan_upload_at) DESC NULLS LAST`,
         [eventId]
       );
 
