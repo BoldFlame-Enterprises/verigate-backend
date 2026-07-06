@@ -1,0 +1,115 @@
+import express from 'express';
+import request from 'supertest';
+
+jest.mock('../../config/database', () => ({ getDB: jest.fn() }));
+
+import { getDB } from '../../config/database';
+import incidentsRouter from '../incidents';
+
+function buildApp(user?: { id: number; email: string; role: string }) {
+  const app = express();
+  app.use(express.json());
+  app.use((req: any, _res, next) => {
+    req.user = user;
+    next();
+  });
+  app.use('/api/incidents', incidentsRouter);
+  return app;
+}
+
+describe('POST /api/incidents', () => {
+  it('rejects a plain "user" role (only scanner/admin may report)', async () => {
+    const app = buildApp({ id: 1, email: 'attendee@test.com', role: 'user' });
+    const res = await request(app).post('/api/incidents').send({ event_id: 1, description: 'Something suspicious' });
+    expect(res.status).toBe(403);
+  });
+
+  it('creates an incident for a scanner', async () => {
+    const query = jest.fn().mockResolvedValue({
+      rows: [{ id: 1, event_id: 1, reporter_user_id: 2, area_id: null, category: 'other', description: 'Something suspicious', status: 'open' }],
+    });
+    (getDB as jest.Mock).mockReturnValue({ query });
+
+    const app = buildApp({ id: 2, email: 'scanner@test.com', role: 'scanner' });
+    const res = await request(app).post('/api/incidents').send({ event_id: 1, description: 'Something suspicious' });
+
+    expect(res.status).toBe(201);
+    expect(res.body.data.status).toBe('open');
+  });
+});
+
+describe('PUT /api/incidents/:id/status', () => {
+  it('rejects an invalid status value', async () => {
+    const app = buildApp({ id: 1, email: 'admin@test.com', role: 'admin' });
+    const res = await request(app).put('/api/incidents/1/status').send({ status: 'archived' });
+    expect(res.status).toBe(400);
+  });
+
+  it('updates status and sets resolved_at for a terminal state', async () => {
+    const query = jest.fn().mockResolvedValue({ rows: [{ id: 1, status: 'resolved', resolved_at: new Date().toISOString() }] });
+    (getDB as jest.Mock).mockReturnValue({ query });
+
+    const app = buildApp({ id: 1, email: 'admin@test.com', role: 'admin' });
+    const res = await request(app).put('/api/incidents/1/status').send({ status: 'resolved' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.status).toBe('resolved');
+  });
+});
+
+describe('POST /api/incidents/overrides', () => {
+  it('rejects a plain "user" role', async () => {
+    const app = buildApp({ id: 1, email: 'attendee@test.com', role: 'user' });
+    const res = await request(app).post('/api/incidents/overrides').send({
+      event_id: 1, area_id: 3, reason: 'Badge damaged, verified in person',
+    });
+    expect(res.status).toBe(403);
+  });
+
+  it('requires a real (non-trivial) reason', async () => {
+    const app = buildApp({ id: 2, email: 'scanner@test.com', role: 'scanner' });
+    const res = await request(app).post('/api/incidents/overrides').send({
+      event_id: 1, area_id: 3, reason: 'ok',
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it('records the override and logs it as a real scan for analytics/reporting', async () => {
+    const query = jest.fn()
+      .mockResolvedValueOnce({ rows: [{ id: 9, event_id: 1, area_id: 3, access_granted: true, reason: 'Badge damaged, verified in person' }] })
+      .mockResolvedValueOnce({ rows: [] }); // scan_logs insert
+    (getDB as jest.Mock).mockReturnValue({ query });
+
+    const app = buildApp({ id: 2, email: 'scanner@test.com', role: 'scanner' });
+    const res = await request(app).post('/api/incidents/overrides').send({
+      event_id: 1, area_id: 3, reason: 'Badge damaged, verified in person', user_id: 7,
+    });
+
+    expect(res.status).toBe(201);
+    expect(query).toHaveBeenCalledTimes(2);
+    expect(query.mock.calls[1][0]).toContain('INSERT INTO scan_logs');
+  });
+});
+
+describe('PUT /api/incidents/overrides/:id/review', () => {
+  it('returns 404 when the override does not exist', async () => {
+    const query = jest.fn().mockResolvedValue({ rows: [] });
+    (getDB as jest.Mock).mockReturnValue({ query });
+
+    const app = buildApp({ id: 1, email: 'admin@test.com', role: 'admin' });
+    const res = await request(app).put('/api/incidents/overrides/999/review');
+
+    expect(res.status).toBe(404);
+  });
+
+  it('marks the override reviewed by the calling admin', async () => {
+    const query = jest.fn().mockResolvedValue({ rows: [{ id: 9, reviewed_at: new Date().toISOString(), reviewed_by: 1 }] });
+    (getDB as jest.Mock).mockReturnValue({ query });
+
+    const app = buildApp({ id: 1, email: 'admin@test.com', role: 'admin' });
+    const res = await request(app).put('/api/incidents/overrides/9/review');
+
+    expect(res.status).toBe(200);
+    expect(query.mock.calls[0][1]).toEqual([1, 9]);
+  });
+});
