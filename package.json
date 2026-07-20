@@ -61,5 +61,10 @@
     "security"
   ],
   "author": "Your Name",
-  "license": "MIT"
+  "license": "MIT",
+  "engines": {
+    "node": ">=22.14.0 <23",
+    "npm": "10.9.2"
+  },
+  "packageManager": "npm@10.9.2"
 }
