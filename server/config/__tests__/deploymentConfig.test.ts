@@ -50,6 +50,12 @@ describe('deployment configuration', () => {
     expect(config.ssl).toEqual({ rejectUnauthorized: true, ca: certificate });
   });
 
+  it('rejects URI parameters that would override verified TLS configuration', () => {
+    expect(() => createDatabaseConfig({
+      DATABASE_URL: 'postgresql://user:password@db.example.com/postgres?sslmode=require',
+    })).toThrow('DATABASE_URL must not contain sslmode');
+  });
+
   it('uses one hosted Redis URI or the local discrete fallback', () => {
     expect(createRedisConfig({ REDIS_URL: 'rediss://user:secret@cache.example.com:6379' })).toEqual({
       url: 'rediss://user:secret@cache.example.com:6379',

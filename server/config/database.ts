@@ -12,8 +12,22 @@ function enabled(value: string | undefined, fallback: boolean): boolean {
   return value.toLowerCase() === 'true';
 }
 
+function assertNoConnectionStringSslOverrides(connectionString: string): void {
+  const parsed = new URL(connectionString);
+  const conflictingOptions = ['sslmode', 'sslcert', 'sslkey', 'sslrootcert'].filter((option) =>
+    parsed.searchParams.has(option)
+  );
+
+  if (conflictingOptions.length > 0) {
+    throw new Error(
+      `DATABASE_URL must not contain ${conflictingOptions.join(', ')}; use DB_SSL and DB_SSL_CA_BASE64 so certificate verification cannot be overridden.`
+    );
+  }
+}
+
 export function createDatabaseConfig(env: NodeJS.ProcessEnv = process.env): PoolConfig {
   const connectionString = env.DATABASE_URL?.trim();
+  if (connectionString) assertNoConnectionStringSslOverrides(connectionString);
   const sslEnabled = enabled(env.DB_SSL, Boolean(connectionString));
   const ssl = sslEnabled
     ? {

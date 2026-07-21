@@ -37,6 +37,7 @@ Create a `.env` file in the `backend` directory with the following variables:
 
 ```bash
 # Hosted database (store this URI in the deployment provider's secret manager)
+# Keep sslmode/sslcert/sslkey/sslrootcert out of this URI; use the settings below.
 DATABASE_URL=
 DB_POOL_MAX=5
 DB_SSL=true
