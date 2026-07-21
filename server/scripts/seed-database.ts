@@ -1,18 +1,19 @@
 import { Pool } from 'pg';
 import argon2 from 'argon2';
 import dotenv from 'dotenv';
+import { createDatabaseConfig } from '../config/database';
 
 dotenv.config();
 
-const pool = new Pool({
-  host: process.env.DB_HOST || 'localhost',
-  port: parseInt(process.env.DB_PORT || '5432', 10),
-  database: process.env.DB_NAME || 'accreditation_system',
-  user: process.env.DB_USER || 'postgres',
-  password: process.env.DB_PASSWORD || '',
-});
+const pool = new Pool(createDatabaseConfig());
 
 const seedData = async () => {
+  if (process.env.DATABASE_URL && process.env.ALLOW_DATABASE_SEED !== 'true') {
+    throw new Error(
+      'Refusing to replace hosted database data. Set ALLOW_DATABASE_SEED=true for this command only if demo data is intended.'
+    );
+  }
+
   const client = await pool.connect();
   
   try {

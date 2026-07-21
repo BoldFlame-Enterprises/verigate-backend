@@ -36,7 +36,15 @@ If Redis is down, every one of these reads falls straight through to Postgres â€
 Create a `.env` file in the `backend` directory with the following variables:
 
 ```bash
-# Database
+# Hosted database (store this URI in the deployment provider's secret manager)
+DATABASE_URL=
+DB_POOL_MAX=5
+DB_SSL=true
+DB_SSL_REJECT_UNAUTHORIZED=true
+# Optional base64-encoded provider CA certificate
+DB_SSL_CA_BASE64=
+
+# Local database fallback used when DATABASE_URL is empty
 DB_HOST=localhost
 DB_PORT=5432
 DB_NAME=verigate_access_control
@@ -87,6 +95,6 @@ APNS_PRODUCTION=false
 - `npm run setup:db`: Create a fresh database (full current schema, including events).
 - `npm run migrate:events`: Upgrade an existing pre-events database in place (idempotent).
 - `npm run migrate:contracts`: Add QR credential and queue contract storage (idempotent).
-- `npm run seed:db`: Populate the database with a demo event + test data.
+- `npm run seed:db`: Replace event/access/scan data with a demo event and test users. A hosted `DATABASE_URL` additionally requires `ALLOW_DATABASE_SEED=true` for that command only.
 - `npm run type-check`: Validate TypeScript types.
 - `npm test`: Run the Jest test suite (route + service tests, mocked DB/Redis).

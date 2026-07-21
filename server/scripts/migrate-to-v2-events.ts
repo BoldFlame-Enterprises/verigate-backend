@@ -1,5 +1,6 @@
 import { Pool } from 'pg';
 import dotenv from 'dotenv';
+import { createDatabaseConfig } from '../config/database';
 
 dotenv.config();
 
@@ -12,13 +13,7 @@ dotenv.config();
  * Run with: npm run migrate:events
  */
 
-const pool = new Pool({
-  host: process.env.DB_HOST || 'localhost',
-  port: parseInt(process.env.DB_PORT || '5432', 10),
-  database: process.env.DB_NAME || 'accreditation_system',
-  user: process.env.DB_USER || 'postgres',
-  password: process.env.DB_PASSWORD || '',
-});
+const pool = new Pool(createDatabaseConfig());
 
 async function columnExists(client: any, table: string, column: string): Promise<boolean> {
   const result = await client.query(
