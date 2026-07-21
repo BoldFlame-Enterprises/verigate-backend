@@ -120,7 +120,7 @@ const createTables = async () => {
         access_granted BOOLEAN NOT NULL,
         failure_reason TEXT,
         scanned_at TIMESTAMP DEFAULT NOW(),
-        received_at TIMESTAMP DEFAULT NOW(),
+        received_at TIMESTAMPTZ DEFAULT NOW(),
         device_info JSONB,
         device_scan_id VARCHAR(100) UNIQUE
       );
@@ -184,8 +184,8 @@ const createTables = async () => {
         description TEXT NOT NULL,
         status VARCHAR(20) NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'reviewing', 'resolved', 'dismissed')),
         client_record_id VARCHAR(100) UNIQUE,
-        occurred_at TIMESTAMP NOT NULL DEFAULT NOW(),
-        received_at TIMESTAMP NOT NULL DEFAULT NOW(),
+        occurred_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        received_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         created_at TIMESTAMP DEFAULT NOW(),
         resolved_at TIMESTAMP
       );
@@ -203,8 +203,8 @@ const createTables = async () => {
         access_granted BOOLEAN NOT NULL DEFAULT true,
         reason TEXT NOT NULL,
         client_record_id VARCHAR(100) UNIQUE,
-        occurred_at TIMESTAMP NOT NULL DEFAULT NOW(),
-        received_at TIMESTAMP NOT NULL DEFAULT NOW(),
+        occurred_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        received_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         created_at TIMESTAMP DEFAULT NOW(),
         reviewed_at TIMESTAMP,
         reviewed_by INTEGER REFERENCES users(id) ON DELETE SET NULL

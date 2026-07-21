@@ -15,6 +15,20 @@ async function addColumn(client: PoolClient, table: string, definition: string):
   await client.query(`ALTER TABLE ${table} ADD COLUMN IF NOT EXISTS ${definition}`);
 }
 
+async function ensureTimestamptz(client: PoolClient, table: string, column: string): Promise<void> {
+  const result = await client.query(
+    `SELECT data_type FROM information_schema.columns
+     WHERE table_schema = 'public' AND table_name = $1 AND column_name = $2`,
+    [table, column]
+  );
+  if (result.rows[0]?.data_type === 'timestamp without time zone') {
+    await client.query(
+      `ALTER TABLE ${table} ALTER COLUMN ${column} TYPE TIMESTAMPTZ
+       USING ${column} AT TIME ZONE 'UTC'`
+    );
+  }
+}
+
 export async function migratePhase01(client: PoolClient): Promise<void> {
   await client.query('BEGIN');
   try {
@@ -36,13 +50,22 @@ export async function migratePhase01(client: PoolClient): Promise<void> {
       'CREATE INDEX IF NOT EXISTS idx_device_credentials_event_user ON device_credentials(event_id, user_id)'
     );
 
-    await addColumn(client, 'scan_logs', 'received_at TIMESTAMP NOT NULL DEFAULT NOW()');
+    await addColumn(client, 'scan_logs', 'received_at TIMESTAMPTZ NOT NULL DEFAULT NOW()');
     await addColumn(client, 'incidents', 'client_record_id VARCHAR(100)');
-    await addColumn(client, 'incidents', 'occurred_at TIMESTAMP NOT NULL DEFAULT NOW()');
-    await addColumn(client, 'incidents', 'received_at TIMESTAMP NOT NULL DEFAULT NOW()');
+    await addColumn(client, 'incidents', 'occurred_at TIMESTAMPTZ NOT NULL DEFAULT NOW()');
+    await addColumn(client, 'incidents', 'received_at TIMESTAMPTZ NOT NULL DEFAULT NOW()');
     await addColumn(client, 'emergency_overrides', 'client_record_id VARCHAR(100)');
-    await addColumn(client, 'emergency_overrides', 'occurred_at TIMESTAMP NOT NULL DEFAULT NOW()');
-    await addColumn(client, 'emergency_overrides', 'received_at TIMESTAMP NOT NULL DEFAULT NOW()');
+    await addColumn(client, 'emergency_overrides', 'occurred_at TIMESTAMPTZ NOT NULL DEFAULT NOW()');
+    await addColumn(client, 'emergency_overrides', 'received_at TIMESTAMPTZ NOT NULL DEFAULT NOW()');
+    for (const [table, column] of [
+      ['scan_logs', 'received_at'],
+      ['incidents', 'occurred_at'],
+      ['incidents', 'received_at'],
+      ['emergency_overrides', 'occurred_at'],
+      ['emergency_overrides', 'received_at'],
+    ]) {
+      await ensureTimestamptz(client, table, column);
+    }
     await client.query(
       'CREATE UNIQUE INDEX IF NOT EXISTS incidents_client_record_id_key ON incidents(client_record_id) WHERE client_record_id IS NOT NULL'
     );
