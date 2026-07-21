@@ -12,6 +12,7 @@ dotenv.config();
 
 import { connectDB } from './config/database';
 import { connectRedis } from './config/redis';
+import { isCorsOriginAllowed } from './config/cors';
 import authRoutes from './routes/auth';
 import userRoutes from './routes/users';
 import eventRoutes from './routes/events';
@@ -51,12 +52,7 @@ app.use(compression());
 // CORS configuration
 app.use(cors({
   origin: function (origin, callback) {
-    // Allow requests from localhost during development
-    if (!origin || origin.includes('localhost') || origin.includes('127.0.0.1')) {
-      callback(null, true);
-    } else {
-      callback(new Error('Not allowed by CORS'));
-    }
+    callback(null, isCorsOriginAllowed(origin));
   },
   credentials: true,
 }));

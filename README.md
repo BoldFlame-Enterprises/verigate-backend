@@ -51,10 +51,16 @@ DB_NAME=verigate_access_control
 DB_USER=postgres
 DB_PASSWORD=your_secure_password
 
-# Redis (Optional)
+# Hosted Redis-compatible cache (optional; redis:// or rediss://)
+REDIS_URL=
+
+# Local Redis fallback used when REDIS_URL is empty
 REDIS_HOST=localhost
 REDIS_PORT=6379
 REDIS_PASSWORD=
+
+# Exact browser origins, comma-separated (required in production)
+CORS_ORIGINS=https://dashboard.example.com
 
 # JWT Security
 JWT_SECRET=your_production_jwt_secret_256_bits_minimum

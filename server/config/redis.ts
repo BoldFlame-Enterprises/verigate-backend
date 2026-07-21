@@ -2,20 +2,34 @@ import { createClient, RedisClientType } from 'redis';
 
 let redisClient: RedisClientType | null = null;
 
+export interface RedisConnectionConfig {
+  url?: string;
+  socket?: {
+    host: string;
+    port: number;
+  };
+  password?: string;
+}
+
+export function createRedisConfig(env: NodeJS.ProcessEnv = process.env): RedisConnectionConfig {
+  const url = env.REDIS_URL?.trim();
+  if (url) return { url };
+
+  const parsedPort = Number.parseInt(env.REDIS_PORT || '', 10);
+  const config: RedisConnectionConfig = {
+    socket: {
+      host: env.REDIS_HOST || 'localhost',
+      port: Number.isInteger(parsedPort) && parsedPort > 0 ? parsedPort : 6379,
+    },
+  };
+
+  if (env.REDIS_PASSWORD) config.password = env.REDIS_PASSWORD;
+  return config;
+}
+
 export async function connectRedis(): Promise<void> {
   try {
-    const config: any = {
-      socket: {
-        host: process.env.REDIS_HOST || 'localhost',
-        port: parseInt(process.env.REDIS_PORT || '6379', 10),
-      },
-    };
-
-    if (process.env.REDIS_PASSWORD) {
-      config.password = process.env.REDIS_PASSWORD;
-    }
-
-    redisClient = createClient(config);
+    redisClient = createClient(createRedisConfig());
 
     redisClient.on('error', (err) => {
       console.error('Redis Client Error:', err);
