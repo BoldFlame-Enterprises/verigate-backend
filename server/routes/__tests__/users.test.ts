@@ -73,6 +73,23 @@ describe('GET /api/users', () => {
 });
 
 describe('POST /api/users', () => {
+  it('returns an actionable password validation message', async () => {
+    const app = buildApp();
+    const res = await request(app).post('/api/users').send({
+      email: 'new@test.com', name: 'New User', phone: '1234567890', password: '12345',
+    });
+
+    expect(res.status).toBe(400);
+    expect(res.body).toMatchObject({
+      success: false,
+      error: 'Validation failed',
+      data: [expect.objectContaining({
+        path: 'password',
+        msg: 'Password must be between 8 and 128 characters',
+      })],
+    });
+  });
+
   it('hashes the password and creates the user', async () => {
     const query = jest.fn()
       .mockResolvedValueOnce({ rows: [] }) // no existing user

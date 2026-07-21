@@ -143,11 +143,11 @@ router.get('/:id', requireAdmin, async (req: Request, res: Response): Promise<vo
 router.post('/',
   requireAdmin,
   [
-    body('email').isEmail().normalizeEmail(),
-    body('name').trim().isLength({ min: 2, max: 100 }),
-    body('phone').trim().isLength({ min: 10, max: 15 }),
-    body('password').isLength({ min: 8, max: 128 }),
-    body('role').optional().isIn(['admin', 'scanner', 'user'])
+    body('email').isEmail().withMessage('Enter a valid email address').normalizeEmail(),
+    body('name').trim().isLength({ min: 2, max: 100 }).withMessage('Name must be between 2 and 100 characters'),
+    body('phone').trim().isLength({ min: 10, max: 15 }).withMessage('Phone must be between 10 and 15 characters'),
+    body('password').isLength({ min: 8, max: 128 }).withMessage('Password must be between 8 and 128 characters'),
+    body('role').optional().isIn(['admin', 'scanner', 'user']).withMessage('Role must be admin, scanner, or user')
   ],
   async (req: Request, res: Response): Promise<void> => {
     try {
