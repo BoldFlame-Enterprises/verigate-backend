@@ -57,6 +57,17 @@ app.use(cors({
   credentials: true,
 }));
 
+// Platform health probes must remain independent of client traffic quotas.
+// Register this before the rate and speed limiters so frequent probes cannot
+// receive a 429 and cause an otherwise healthy instance to be restarted.
+app.get('/health', (_req, res) => {
+  res.json({
+    status: 'healthy',
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime(),
+  });
+});
+
 // Rate limiting
 const limiter = rateLimit({
   windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS || '900000', 10), // 15 minutes
@@ -84,15 +95,6 @@ app.use(morgan('combined'));
 // Body parsing middleware
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
-
-// Health check endpoint
-app.get('/health', (_req, res) => {
-  res.json({
-    status: 'healthy',
-    timestamp: new Date().toISOString(),
-    uptime: process.uptime(),
-  });
-});
 
 // API Routes
 app.use('/api/auth', authRoutes);
