@@ -120,8 +120,24 @@ const createTables = async () => {
         access_granted BOOLEAN NOT NULL,
         failure_reason TEXT,
         scanned_at TIMESTAMP DEFAULT NOW(),
+        received_at TIMESTAMP DEFAULT NOW(),
         device_info JSONB,
         device_scan_id VARCHAR(100) UNIQUE
+      );
+    `);
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS device_credentials (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER REFERENCES users(id) ON DELETE CASCADE NOT NULL,
+        event_id INTEGER REFERENCES events(id) ON DELETE CASCADE NOT NULL,
+        device_id VARCHAR(255) NOT NULL,
+        public_key TEXT NOT NULL,
+        credential_version VARCHAR(128) NOT NULL,
+        is_active BOOLEAN DEFAULT true,
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW(),
+        UNIQUE(event_id, user_id, device_id)
       );
     `);
 
@@ -167,6 +183,9 @@ const createTables = async () => {
         category VARCHAR(50) NOT NULL DEFAULT 'other',
         description TEXT NOT NULL,
         status VARCHAR(20) NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'reviewing', 'resolved', 'dismissed')),
+        client_record_id VARCHAR(100) UNIQUE,
+        occurred_at TIMESTAMP NOT NULL DEFAULT NOW(),
+        received_at TIMESTAMP NOT NULL DEFAULT NOW(),
         created_at TIMESTAMP DEFAULT NOW(),
         resolved_at TIMESTAMP
       );
@@ -183,6 +202,9 @@ const createTables = async () => {
         scanner_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
         access_granted BOOLEAN NOT NULL DEFAULT true,
         reason TEXT NOT NULL,
+        client_record_id VARCHAR(100) UNIQUE,
+        occurred_at TIMESTAMP NOT NULL DEFAULT NOW(),
+        received_at TIMESTAMP NOT NULL DEFAULT NOW(),
         created_at TIMESTAMP DEFAULT NOW(),
         reviewed_at TIMESTAMP,
         reviewed_by INTEGER REFERENCES users(id) ON DELETE SET NULL
@@ -204,6 +226,7 @@ const createTables = async () => {
     await client.query('CREATE INDEX IF NOT EXISTS idx_scan_logs_event_id ON scan_logs(event_id);');
     await client.query('CREATE INDEX IF NOT EXISTS idx_device_tokens_user_id ON device_tokens(user_id);');
     await client.query('CREATE INDEX IF NOT EXISTS idx_device_tokens_event_id ON device_tokens(event_id);');
+    await client.query('CREATE INDEX IF NOT EXISTS idx_device_credentials_event_user ON device_credentials(event_id, user_id);');
     await client.query('CREATE INDEX IF NOT EXISTS idx_device_sync_status_event_id ON device_sync_status(event_id);');
     await client.query('CREATE INDEX IF NOT EXISTS idx_incidents_event_id ON incidents(event_id);');
     await client.query('CREATE INDEX IF NOT EXISTS idx_incidents_status ON incidents(status);');

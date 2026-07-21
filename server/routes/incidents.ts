@@ -3,6 +3,7 @@ import { body, query, validationResult } from 'express-validator';
 import { getDB } from '../config/database';
 import { requireAdmin, requireScannerOrAdmin } from '../middleware/auth';
 import { AuthRequest, APIResponse } from '../types';
+import { requireEventAccess } from '../middleware/eventAuthorization';
 
 const router = Router();
 
@@ -14,8 +15,11 @@ router.post('/',
     body('event_id').isInt(),
     body('description').isString().trim().notEmpty(),
     body('category').optional().isString(),
-    body('area_id').optional().isInt()
+    body('area_id').optional().isInt(),
+    body('client_record_id').isString().trim().isLength({ min: 8, max: 100 }),
+    body('occurred_at').isISO8601()
   ],
+  requireEventAccess({ location: 'body', principalRoles: ['scanner'] }),
   async (req: AuthRequest, res: Response): Promise<void> => {
     try {
       const errors = validationResult(req);
@@ -24,16 +28,41 @@ router.post('/',
         return;
       }
 
-      const { event_id, description, category = 'other', area_id = null } = req.body;
+      const {
+        event_id,
+        description,
+        category = 'other',
+        area_id = null,
+        client_record_id,
+        occurred_at,
+      } = req.body;
       const db = getDB();
       const result = await db.query(
-        `INSERT INTO incidents (event_id, reporter_user_id, area_id, category, description, status)
-         VALUES ($1, $2, $3, $4, $5, 'open')
-         RETURNING id, event_id, reporter_user_id, area_id, category, description, status, created_at`,
-        [event_id, req.user?.id || null, area_id, category, description]
+        `INSERT INTO incidents
+           (event_id, reporter_user_id, area_id, category, description, status,
+            client_record_id, occurred_at, received_at)
+         SELECT $1, $2, $3, $4, $5, 'open', $6, $7, NOW()
+         WHERE $3::integer IS NULL
+            OR EXISTS (SELECT 1 FROM areas WHERE id = $3 AND event_id = $1)
+         ON CONFLICT (client_record_id) DO NOTHING
+         RETURNING id, event_id, reporter_user_id, area_id, category, description,
+                   status, client_record_id, occurred_at, received_at, created_at`,
+        [event_id, req.user?.id || null, area_id, category, description, client_record_id, occurred_at]
       );
 
-      res.status(201).json({ success: true, data: result.rows[0] } as APIResponse);
+      if (result.rows.length > 0) {
+        res.status(201).json({ success: true, data: { status: 'accepted', record: result.rows[0] } } as APIResponse);
+        return;
+      }
+      const duplicate = await db.query(
+        'SELECT id, client_record_id, occurred_at, received_at FROM incidents WHERE client_record_id = $1',
+        [client_record_id]
+      );
+      if (duplicate.rows.length > 0) {
+        res.json({ success: true, data: { status: 'duplicate', record: duplicate.rows[0] } } as APIResponse);
+        return;
+      }
+      res.status(400).json({ success: false, error: 'area_id does not belong to the authorized event' } as APIResponse);
     } catch (error) {
       console.error('Error creating incident report:', error);
       res.status(500).json({ success: false, error: 'Failed to create incident report' } as APIResponse);
@@ -56,12 +85,13 @@ router.get('/',
       const db = getDB();
       const result = await db.query(
         `SELECT i.id, i.event_id, i.reporter_user_id, u.name as reporter_name, i.area_id, a.name as area_name,
-                i.category, i.description, i.status, i.created_at, i.resolved_at
+                i.category, i.description, i.status, i.client_record_id,
+                i.occurred_at, i.received_at, i.created_at, i.resolved_at
          FROM incidents i
          LEFT JOIN users u ON u.id = i.reporter_user_id
          LEFT JOIN areas a ON a.id = i.area_id
          WHERE i.event_id = $1
-         ORDER BY i.created_at DESC`,
+         ORDER BY i.occurred_at DESC`,
         [eventId]
       );
       res.json({ success: true, data: result.rows } as APIResponse);
@@ -115,8 +145,11 @@ router.post('/overrides',
     body('area_id').isInt(),
     body('reason').isString().trim().isLength({ min: 3 }),
     body('user_id').optional().isInt(),
-    body('access_granted').optional().isBoolean()
+    body('access_granted').optional().isBoolean(),
+    body('client_record_id').isString().trim().isLength({ min: 8, max: 100 }),
+    body('occurred_at').isISO8601()
   ],
+  requireEventAccess({ location: 'body', principalRoles: ['scanner'] }),
   async (req: AuthRequest, res: Response): Promise<void> => {
     try {
       const errors = validationResult(req);
@@ -125,20 +158,46 @@ router.post('/overrides',
         return;
       }
 
-      const { event_id, area_id, reason, user_id = null, access_granted = true } = req.body;
+      const {
+        event_id,
+        area_id,
+        reason,
+        user_id = null,
+        access_granted = true,
+        client_record_id,
+        occurred_at,
+      } = req.body;
       const db = getDB();
 
       const result = await db.query(
-        `INSERT INTO emergency_overrides (event_id, user_id, area_id, scanner_user_id, access_granted, reason)
-         VALUES ($1, $2, $3, $4, $5, $6)
-         RETURNING id, event_id, user_id, area_id, scanner_user_id, access_granted, reason, created_at`,
-        [event_id, user_id, area_id, req.user?.id || null, access_granted, reason]
+        `INSERT INTO emergency_overrides
+           (event_id, user_id, area_id, scanner_user_id, access_granted, reason,
+            client_record_id, occurred_at, received_at)
+         SELECT $1, $2, $3, $4, $5, $6, $7, $8, NOW()
+         WHERE EXISTS (SELECT 1 FROM areas WHERE id = $3 AND event_id = $1)
+         ON CONFLICT (client_record_id) DO NOTHING
+         RETURNING id, event_id, user_id, area_id, scanner_user_id, access_granted,
+                   reason, client_record_id, occurred_at, received_at, created_at`,
+        [event_id, user_id, area_id, req.user?.id || null, access_granted, reason, client_record_id, occurred_at]
       );
 
-      // Also log it as a scan_logs entry so it shows up in analytics/reporting.
+      if (result.rows.length === 0) {
+        const duplicate = await db.query(
+          'SELECT id, client_record_id, occurred_at, received_at FROM emergency_overrides WHERE client_record_id = $1',
+          [client_record_id]
+        );
+        if (duplicate.rows.length > 0) {
+          res.json({ success: true, data: { status: 'duplicate', record: duplicate.rows[0] } } as APIResponse);
+          return;
+        }
+        res.status(400).json({ success: false, error: 'area_id does not belong to the authorized event' } as APIResponse);
+        return;
+      }
+
+      // Also log accepted overrides using the original occurrence time.
       await db.query(
         `INSERT INTO scan_logs (event_id, user_id, area_id, scanner_user_id, access_granted, failure_reason, scanned_at, device_info)
-         VALUES ($1, $2, $3, $4, $5, $6, NOW(), $7)`,
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
         [
           event_id,
           user_id,
@@ -146,11 +205,12 @@ router.post('/overrides',
           req.user?.id || null,
           access_granted,
           access_granted ? null : `Manual override: ${reason}`,
+          occurred_at,
           JSON.stringify({ source: 'manual-override', reason })
         ]
       );
 
-      res.status(201).json({ success: true, data: result.rows[0] } as APIResponse);
+      res.status(201).json({ success: true, data: { status: 'accepted', record: result.rows[0] } } as APIResponse);
     } catch (error) {
       console.error('Error creating emergency override:', error);
       res.status(500).json({ success: false, error: 'Failed to create emergency override' } as APIResponse);
@@ -174,13 +234,14 @@ router.get('/overrides',
       const result = await db.query(
         `SELECT eo.id, eo.event_id, eo.user_id, u.name as user_name, eo.area_id, a.name as area_name,
                 eo.scanner_user_id, su.name as scanner_name, eo.access_granted, eo.reason,
+                eo.client_record_id, eo.occurred_at, eo.received_at,
                 eo.created_at, eo.reviewed_at, eo.reviewed_by
          FROM emergency_overrides eo
          LEFT JOIN users u ON u.id = eo.user_id
          LEFT JOIN areas a ON a.id = eo.area_id
          LEFT JOIN users su ON su.id = eo.scanner_user_id
          WHERE eo.event_id = $1
-         ORDER BY eo.created_at DESC`,
+         ORDER BY eo.occurred_at DESC`,
         [eventId]
       );
       res.json({ success: true, data: result.rows } as APIResponse);

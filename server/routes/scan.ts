@@ -4,6 +4,7 @@ import { getDB } from '../config/database';
 import { requireScannerOrAdmin } from '../middleware/auth';
 import { AuthRequest, APIResponse } from '../types';
 import { verifyQrForArea } from '../services/qrVerification';
+import { requireEventAccess } from '../middleware/eventAuthorization';
 
 const router = Router();
 
@@ -18,6 +19,7 @@ router.post('/verify',
     body('area_id').isInt(),
     body('event_id').isInt()
   ],
+  requireEventAccess({ location: 'body', principalRoles: ['scanner'] }),
   async (req: AuthRequest, res: Response): Promise<void> => {
     try {
       const errors = validationResult(req);

@@ -4,6 +4,7 @@ import { getDB } from '../config/database';
 import { requireAdmin } from '../middleware/auth';
 import { AuthRequest, APIResponse } from '../types';
 import { deleteCache } from '../config/redis';
+import { requireEventAccess } from '../middleware/eventAuthorization';
 
 const router = Router();
 
@@ -36,7 +37,9 @@ router.get('/', async (req: AuthRequest, res: Response): Promise<void> => {
   }
 });
 
-router.get('/:id', async (req: Request, res: Response): Promise<void> => {
+router.get('/:id',
+  requireEventAccess({ location: 'params', key: 'id' }),
+  async (req: Request, res: Response): Promise<void> => {
   try {
     const id = parseInt(req.params.id, 10);
     if (Number.isNaN(id)) {
@@ -54,7 +57,8 @@ router.get('/:id', async (req: Request, res: Response): Promise<void> => {
     console.error('Error getting event:', error);
     res.status(500).json({ success: false, error: 'Failed to get event' } as APIResponse);
   }
-});
+  }
+);
 
 router.post('/',
   requireAdmin,

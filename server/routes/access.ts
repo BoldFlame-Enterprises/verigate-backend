@@ -5,6 +5,7 @@ import { requireAdmin } from '../middleware/auth';
 import { APIResponse } from '../types';
 import { deleteCache } from '../config/redis';
 import { sendPushToUsers } from '../services/push';
+import { requireEventAccess, requireEventResourceAccess } from '../middleware/eventAuthorization';
 
 const router = Router();
 const ACCESS_LEVEL_COLUMNS = `id, event_id, name, description, priority, is_active`;
@@ -19,6 +20,7 @@ async function invalidateAccessCaches(eventId: number): Promise<void> {
 // List access levels for an event
 router.get('/',
   [query('event_id').isInt().withMessage('event_id is required')],
+  requireEventAccess({ location: 'query' }),
   async (req: Request, res: Response): Promise<void> => {
     try {
       const errors = validationResult(req);
@@ -41,7 +43,9 @@ router.get('/',
   }
 );
 
-router.get('/:id', async (req: Request, res: Response): Promise<void> => {
+router.get('/:id',
+  requireEventResourceAccess('access_levels'),
+  async (req: Request, res: Response): Promise<void> => {
   try {
     const id = parseInt(req.params.id, 10);
     if (Number.isNaN(id)) {
@@ -59,7 +63,8 @@ router.get('/:id', async (req: Request, res: Response): Promise<void> => {
     console.error('Error getting access level:', error);
     res.status(500).json({ success: false, error: 'Failed to get access level' } as APIResponse);
   }
-});
+  }
+);
 
 router.post('/',
   requireAdmin,
@@ -188,6 +193,7 @@ router.delete('/:id', requireAdmin, async (req: Request, res: Response): Promise
 
 // List assignments (optionally filtered by user_id or area_id, required event_id)
 router.get('/assignments/list',
+  requireAdmin,
   [query('event_id').isInt().withMessage('event_id is required')],
   async (req: Request, res: Response): Promise<void> => {
     try {

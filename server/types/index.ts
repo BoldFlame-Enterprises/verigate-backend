@@ -73,6 +73,26 @@ export interface AccessAssignment {
   is_active: boolean;
 }
 
+export interface CredentialAssignment {
+  area_id: number;
+  area_name: string;
+  access_level_id: number;
+  access_level_name: string;
+  access_priority: number;
+  valid_from: string;
+  valid_until: string;
+}
+
+export interface EventUserProjection {
+  id: number;
+  event_id: number;
+  email: string;
+  name: string;
+  phone: string;
+  is_active: boolean;
+  assignments: CredentialAssignment[];
+}
+
 export interface ScanLog {
   id: number;
   event_id: number;
@@ -93,12 +113,11 @@ export interface JWTPayload {
   exp: number;
 }
 
-export interface QRCodePayload {
-  uid: string; // encrypted user id
-  alh: string; // access level hash
-  ts: number;  // timestamp
-  dfp: string; // device fingerprint
-  vt: string;  // validation token
+export interface QueueRecordResult {
+  client_record_id: string;
+  status: 'accepted' | 'duplicate' | 'retryable_error' | 'rejected';
+  server_id?: number;
+  error?: string;
 }
 
 export interface APIResponse<T = any> {
@@ -122,6 +141,11 @@ export interface AuthRequest extends Request {
     id: number;
     email: string;
     role: string;
+  };
+  event?: {
+    id: number;
+    role: string;
+    isGlobalAdmin: boolean;
   };
 }
 

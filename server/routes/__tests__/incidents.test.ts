@@ -25,16 +25,23 @@ describe('POST /api/incidents', () => {
   });
 
   it('creates an incident for a scanner', async () => {
+    const occurredAt = new Date().toISOString();
     const query = jest.fn().mockResolvedValue({
-      rows: [{ id: 1, event_id: 1, reporter_user_id: 2, area_id: null, category: 'other', description: 'Something suspicious', status: 'open' }],
+      rows: [{ id: 1, event_id: 1, reporter_user_id: 2, area_id: null, category: 'other', description: 'Something suspicious', status: 'open', client_record_id: 'incident-001', occurred_at: occurredAt }],
     });
     (getDB as jest.Mock).mockReturnValue({ query });
 
-    const app = buildApp({ id: 2, email: 'scanner@test.com', role: 'scanner' });
-    const res = await request(app).post('/api/incidents').send({ event_id: 1, description: 'Something suspicious' });
+    const app = buildApp({ id: 2, email: 'admin@test.com', role: 'admin' });
+    const res = await request(app).post('/api/incidents').send({
+      event_id: 1,
+      description: 'Something suspicious',
+      client_record_id: 'incident-001',
+      occurred_at: occurredAt,
+    });
 
     expect(res.status).toBe(201);
-    expect(res.body.data.status).toBe('open');
+    expect(res.body.data.status).toBe('accepted');
+    expect(res.body.data.record.status).toBe('open');
   });
 });
 
@@ -67,22 +74,28 @@ describe('POST /api/incidents/overrides', () => {
   });
 
   it('requires a real (non-trivial) reason', async () => {
-    const app = buildApp({ id: 2, email: 'scanner@test.com', role: 'scanner' });
+    const app = buildApp({ id: 2, email: 'admin@test.com', role: 'admin' });
     const res = await request(app).post('/api/incidents/overrides').send({
-      event_id: 1, area_id: 3, reason: 'ok',
+      event_id: 1, area_id: 3, reason: 'ok', client_record_id: 'override-001', occurred_at: new Date().toISOString(),
     });
     expect(res.status).toBe(400);
   });
 
   it('records the override and logs it as a real scan for analytics/reporting', async () => {
+    const occurredAt = new Date().toISOString();
     const query = jest.fn()
-      .mockResolvedValueOnce({ rows: [{ id: 9, event_id: 1, area_id: 3, access_granted: true, reason: 'Badge damaged, verified in person' }] })
+      .mockResolvedValueOnce({ rows: [{ id: 9, event_id: 1, area_id: 3, access_granted: true, reason: 'Badge damaged, verified in person', client_record_id: 'override-002', occurred_at: occurredAt }] })
       .mockResolvedValueOnce({ rows: [] }); // scan_logs insert
     (getDB as jest.Mock).mockReturnValue({ query });
 
-    const app = buildApp({ id: 2, email: 'scanner@test.com', role: 'scanner' });
+    const app = buildApp({ id: 2, email: 'admin@test.com', role: 'admin' });
     const res = await request(app).post('/api/incidents/overrides').send({
-      event_id: 1, area_id: 3, reason: 'Badge damaged, verified in person', user_id: 7,
+      event_id: 1,
+      area_id: 3,
+      reason: 'Badge damaged, verified in person',
+      user_id: 7,
+      client_record_id: 'override-002',
+      occurred_at: occurredAt,
     });
 
     expect(res.status).toBe(201);

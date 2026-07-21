@@ -4,6 +4,7 @@ import { getDB } from '../config/database';
 import { requireAdmin } from '../middleware/auth';
 import { APIResponse } from '../types';
 import { deleteCache } from '../config/redis';
+import { requireEventAccess, requireEventResourceAccess } from '../middleware/eventAuthorization';
 
 const router = Router();
 const AREA_COLUMNS = `id, event_id, name, description, requires_scan, is_active`;
@@ -18,6 +19,7 @@ async function invalidateAreaCaches(eventId: number): Promise<void> {
 // List areas for an event (any authenticated role)
 router.get('/',
   [query('event_id').isInt().withMessage('event_id is required')],
+  requireEventAccess({ location: 'query' }),
   async (req: Request, res: Response): Promise<void> => {
     try {
       const errors = validationResult(req);
@@ -40,7 +42,9 @@ router.get('/',
   }
 );
 
-router.get('/:id', async (req: Request, res: Response): Promise<void> => {
+router.get('/:id',
+  requireEventResourceAccess('areas'),
+  async (req: Request, res: Response): Promise<void> => {
   try {
     const id = parseInt(req.params.id, 10);
     if (Number.isNaN(id)) {
@@ -58,7 +62,8 @@ router.get('/:id', async (req: Request, res: Response): Promise<void> => {
     console.error('Error getting area:', error);
     res.status(500).json({ success: false, error: 'Failed to get area' } as APIResponse);
   }
-});
+  }
+);
 
 router.post('/',
   requireAdmin,

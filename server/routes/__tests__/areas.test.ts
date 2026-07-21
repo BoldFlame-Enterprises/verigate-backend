@@ -14,6 +14,10 @@ import areasRouter from '../areas';
 function buildApp() {
   const app = express();
   app.use(express.json());
+  app.use((req: any, _res, next) => {
+    req.user = { id: 1, email: 'admin@test.com', role: 'admin' };
+    next();
+  });
   app.use('/api/areas', areasRouter);
   return app;
 }

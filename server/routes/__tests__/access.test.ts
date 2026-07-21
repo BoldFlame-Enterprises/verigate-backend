@@ -15,6 +15,10 @@ import accessRouter from '../access';
 function buildApp() {
   const app = express();
   app.use(express.json());
+  app.use((req: any, _res, next) => {
+    req.user = { id: 1, email: 'admin@test.com', role: 'admin' };
+    next();
+  });
   app.use('/api/access', accessRouter);
   return app;
 }

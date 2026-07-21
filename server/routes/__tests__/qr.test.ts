@@ -1,15 +1,27 @@
 import express from 'express';
 import request from 'supertest';
+import crypto from 'crypto';
 
 jest.mock('../../config/database', () => ({ getDB: jest.fn() }));
 jest.mock('../../services/qrVerification', () => ({
-  signQrData: jest.fn().mockReturnValue('mock-signature'),
   verifyQrForArea: jest.fn(),
 }));
 
 import { getDB } from '../../config/database';
 import { verifyQrForArea } from '../../services/qrVerification';
 import qrRouter from '../qr';
+
+const devicePublicKey = crypto.generateKeyPairSync('ec', { namedCurve: 'prime256v1' })
+  .publicKey.export({ format: 'der', type: 'spki' }).toString('base64');
+
+function generatePath(eventId = 1): string {
+  const params = new URLSearchParams({
+    event_id: String(eventId),
+    device_id: 'device-test-1',
+    device_public_key: devicePublicKey,
+  });
+  return `/api/qr/generate?${params.toString()}`;
+}
 
 function buildApp(user?: { id: number; email: string; role: string }) {
   const app = express();
@@ -31,7 +43,7 @@ describe('GET /api/qr/generate', () => {
 
   it('returns 401 when there is no authenticated user', async () => {
     const app = buildApp(undefined);
-    const res = await request(app).get('/api/qr/generate?event_id=1');
+    const res = await request(app).get(generatePath());
     expect(res.status).toBe(401);
   });
 
@@ -39,27 +51,36 @@ describe('GET /api/qr/generate', () => {
     const query = jest.fn().mockResolvedValue({ rows: [] });
     (getDB as jest.Mock).mockReturnValue({ query });
 
-    const app = buildApp({ id: 1, email: 'vip@test.com', role: 'user' });
-    const res = await request(app).get('/api/qr/generate?event_id=1');
+    const app = buildApp({ id: 1, email: 'vip@test.com', role: 'admin' });
+    const res = await request(app).get(generatePath());
 
     expect(res.status).toBe(404);
   });
 
   it('builds a signed, event-scoped QR payload for a real user', async () => {
-    const query = jest.fn().mockResolvedValue({
-      rows: [{ id: 7, email: 'vip@test.com', name: 'VIP Guest', is_active: true, access_level: 'VIP', access_priority: 5, allowed_areas: ['Main Arena'] }],
-    });
+    const assignments = [{
+      area_id: 3,
+      area_name: 'Main Arena',
+      access_level_id: 2,
+      access_level_name: 'VIP',
+      access_priority: 5,
+      valid_from: '2026-01-01T00:00:00.000Z',
+      valid_until: '2027-01-01T00:00:00.000Z',
+    }];
+    const query = jest.fn()
+      .mockResolvedValueOnce({ rows: [{ id: 7, email: 'vip@test.com', name: 'VIP Guest', is_active: true, assignments }] })
+      .mockResolvedValueOnce({ rows: [] });
     (getDB as jest.Mock).mockReturnValue({ query });
 
-    const app = buildApp({ id: 7, email: 'vip@test.com', role: 'user' });
-    const res = await request(app).get('/api/qr/generate?event_id=1');
+    const app = buildApp({ id: 7, email: 'vip@test.com', role: 'admin' });
+    const res = await request(app).get(generatePath());
 
     expect(res.status).toBe(200);
-    const qrContent = JSON.parse(res.body.data.qr_content);
-    expect(qrContent.signature).toBe('mock-signature');
-    const payload = JSON.parse(qrContent.data);
-    expect(payload.user_id).toBe(7);
-    expect(payload.event_id).toBe(1);
+    expect(res.body.data.contract_version).toBe('qr-credential-v2');
+    expect(res.body.data.credential.payload.user_id).toBe(7);
+    expect(res.body.data.credential.payload.event_id).toBe(1);
+    expect(res.body.data.credential.payload.assignments).toEqual(assignments);
+    expect(res.body.data.credential.authority_signature).toBeTruthy();
     expect(res.body.data.user_info.name).toBe('VIP Guest');
   });
 });
@@ -68,7 +89,7 @@ describe('POST /api/qr/verify', () => {
   it('delegates to the same real verification function as /api/scan/verify', async () => {
     (verifyQrForArea as jest.Mock).mockResolvedValue({ access_granted: true, user: { id: 7, name: 'VIP Guest' } });
 
-    const app = buildApp({ id: 1, email: 'scanner@test.com', role: 'scanner' });
+    const app = buildApp({ id: 1, email: 'admin@test.com', role: 'admin' });
     const res = await request(app).post('/api/qr/verify').send({
       qr_content: 'signed-payload', area_id: 3, event_id: 1,
     });

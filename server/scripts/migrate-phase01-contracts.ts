@@ -1,0 +1,76 @@
+import { Pool, PoolClient } from 'pg';
+import dotenv from 'dotenv';
+
+dotenv.config();
+
+const pool = new Pool({
+  host: process.env.DB_HOST || 'localhost',
+  port: parseInt(process.env.DB_PORT || '5432', 10),
+  database: process.env.DB_NAME || 'accreditation_system',
+  user: process.env.DB_USER || 'postgres',
+  password: process.env.DB_PASSWORD || '',
+});
+
+async function addColumn(client: PoolClient, table: string, definition: string): Promise<void> {
+  await client.query(`ALTER TABLE ${table} ADD COLUMN IF NOT EXISTS ${definition}`);
+}
+
+export async function migratePhase01(client: PoolClient): Promise<void> {
+  await client.query('BEGIN');
+  try {
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS device_credentials (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER REFERENCES users(id) ON DELETE CASCADE NOT NULL,
+        event_id INTEGER REFERENCES events(id) ON DELETE CASCADE NOT NULL,
+        device_id VARCHAR(255) NOT NULL,
+        public_key TEXT NOT NULL,
+        credential_version VARCHAR(128) NOT NULL,
+        is_active BOOLEAN DEFAULT true,
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW(),
+        UNIQUE(event_id, user_id, device_id)
+      )
+    `);
+    await client.query(
+      'CREATE INDEX IF NOT EXISTS idx_device_credentials_event_user ON device_credentials(event_id, user_id)'
+    );
+
+    await addColumn(client, 'scan_logs', 'received_at TIMESTAMP NOT NULL DEFAULT NOW()');
+    await addColumn(client, 'incidents', 'client_record_id VARCHAR(100)');
+    await addColumn(client, 'incidents', 'occurred_at TIMESTAMP NOT NULL DEFAULT NOW()');
+    await addColumn(client, 'incidents', 'received_at TIMESTAMP NOT NULL DEFAULT NOW()');
+    await addColumn(client, 'emergency_overrides', 'client_record_id VARCHAR(100)');
+    await addColumn(client, 'emergency_overrides', 'occurred_at TIMESTAMP NOT NULL DEFAULT NOW()');
+    await addColumn(client, 'emergency_overrides', 'received_at TIMESTAMP NOT NULL DEFAULT NOW()');
+    await client.query(
+      'CREATE UNIQUE INDEX IF NOT EXISTS incidents_client_record_id_key ON incidents(client_record_id) WHERE client_record_id IS NOT NULL'
+    );
+    await client.query(
+      'CREATE UNIQUE INDEX IF NOT EXISTS overrides_client_record_id_key ON emergency_overrides(client_record_id) WHERE client_record_id IS NOT NULL'
+    );
+
+    await client.query('COMMIT');
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  }
+}
+
+async function main(): Promise<void> {
+  const client = await pool.connect();
+  try {
+    await migratePhase01(client);
+    console.log('Phase 1 contract migration completed');
+  } finally {
+    client.release();
+    await pool.end();
+  }
+}
+
+if (require.main === module) {
+  main().catch((error) => {
+    console.error('Phase 1 contract migration failed:', error);
+    process.exit(1);
+  });
+}

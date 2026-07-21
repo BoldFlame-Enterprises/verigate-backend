@@ -4,6 +4,7 @@ import { getDB } from '../config/database';
 import { requireAdmin } from '../middleware/auth';
 import { AuthRequest, APIResponse } from '../types';
 import { sendPushToUsers } from '../services/push';
+import { requireEventAccess } from '../middleware/eventAuthorization';
 
 const router = Router();
 
@@ -14,6 +15,7 @@ router.post('/register-device',
     body('token').isString().notEmpty(),
     body('platform').isIn(['android', 'ios'])
   ],
+  requireEventAccess({ location: 'body' }),
   async (req: AuthRequest, res: Response): Promise<void> => {
     try {
       const errors = validationResult(req);
@@ -108,9 +110,10 @@ router.post('/sync-heartbeat',
   [
     body('device_id').isString().notEmpty(),
     body('app').isIn(['pass', 'scan']),
-    body('event_id').optional().isInt(),
+    body('event_id').isInt(),
     body('local_db_version').optional().isInt()
   ],
+  requireEventAccess({ location: 'body' }),
   async (req: AuthRequest, res: Response): Promise<void> => {
     try {
       const errors = validationResult(req);

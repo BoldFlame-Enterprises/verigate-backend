@@ -24,7 +24,9 @@ function buildApp(user?: { id: number; email: string; role: string }) {
 
 describe('POST /api/notifications/register-device', () => {
   it('upserts the token scoped to the authenticated user', async () => {
-    const query = jest.fn().mockResolvedValue({ rows: [{ id: 1, user_id: 3, event_id: 5, platform: 'android', is_active: true }] });
+    const query = jest.fn()
+      .mockResolvedValueOnce({ rows: [{ role_in_event: 'attendee' }] })
+      .mockResolvedValueOnce({ rows: [{ id: 1, user_id: 3, event_id: 5, platform: 'android', is_active: true }] });
     (getDB as jest.Mock).mockReturnValue({ query });
 
     const app = buildApp({ id: 3, email: 'attendee@test.com', role: 'user' });
@@ -33,8 +35,8 @@ describe('POST /api/notifications/register-device', () => {
     });
 
     expect(res.status).toBe(201);
-    expect(query.mock.calls[0][0]).toContain('ON CONFLICT (token)');
-    expect(query.mock.calls[0][1]).toEqual([3, 5, 'device-token-1', 'android']);
+    expect(query.mock.calls[1][0]).toContain('ON CONFLICT (token)');
+    expect(query.mock.calls[1][1]).toEqual([3, 5, 'device-token-1', 'android']);
   });
 });
 
@@ -88,7 +90,7 @@ describe('POST /api/notifications/sync-heartbeat', () => {
     const query = jest.fn().mockResolvedValue({ rows: [] });
     (getDB as jest.Mock).mockReturnValue({ query });
 
-    const app = buildApp({ id: 1, email: 'scanner@test.com', role: 'scanner' });
+    const app = buildApp({ id: 1, email: 'admin@test.com', role: 'admin' });
     const res = await request(app).post('/api/notifications/sync-heartbeat').send({
       device_id: 'device-1', app: 'scan', event_id: 5,
     });
@@ -102,7 +104,7 @@ describe('POST /api/notifications/sync-heartbeat', () => {
     const query = jest.fn().mockResolvedValue({ rows: [] });
     (getDB as jest.Mock).mockReturnValue({ query });
 
-    const app = buildApp({ id: 1, email: 'scanner@test.com', role: 'scanner' });
+    const app = buildApp({ id: 1, email: 'admin@test.com', role: 'admin' });
     const res = await request(app).post('/api/notifications/sync-heartbeat').send({
       device_id: 'device-1', app: 'scan', event_id: 5, kind: 'scan_upload',
     });

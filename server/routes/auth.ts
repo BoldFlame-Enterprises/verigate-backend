@@ -28,7 +28,8 @@ router.post('/register',
         return;
       }
 
-      const { email, name, phone, password, role = 'user' } = req.body;
+      const { email, name, phone, password } = req.body;
+      const role = 'user';
       const db = getDB();
 
       // Check if user already exists
