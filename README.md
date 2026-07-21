@@ -5,7 +5,7 @@ This is the backend API server for the VeriGate Access Control system.
 ## 🚀 Features
 
 - **Multi-event tenancy**: `events` is first-class; access levels, areas, assignments, and scan logs are all scoped to an event. Membership is **multi-event** — a user can belong to more than one event over time (see `event_members`), separate from per-area `access_assignments`.
-- **Real QR verification, one path**: `services/qrVerification.ts` is the single real verification implementation (signature + expiry + DB-backed access-assignment lookup), used by both `/api/scan/verify` and the deprecated `/api/qr/verify` alias. No hardcoded identities anywhere.
+- **QR v2 verification, one path**: the backend signs event/device-bound P-256 credentials and `services/qrVerification.ts` applies signature, expiry, credential-version, event, device, and current DB-assignment checks for both verification routes.
 - **Full CRUD**: users (+ bulk CSV import/export), events, areas, access levels, access assignments, incidents, and emergency overrides.
 - **Redis caching (fail-open)**: hot reads (sync payloads, admin dashboard, analytics) are cached with short TTLs and explicit invalidation on writes; a missing/unreachable Redis degrades to Postgres, never a 500 — see "Caching" below.
 - **Notifications**: Android push is real (Firebase Cloud Messaging via `firebase-admin`); iOS push is fully implemented over raw HTTP/2 + JWT provider tokens but gated behind `APNS_ENABLED` (default off, since it needs a paid Apple Developer account).
@@ -17,7 +17,7 @@ This is the backend API server for the VeriGate Access Control system.
 
 ## 🗄️ Schema (source of truth: `server/scripts/setup-database.ts`)
 
-`events`, `event_members`, `users`, `access_levels`, `areas`, `access_assignments`, `scan_logs`, `device_tokens`, `device_sync_status`, `incidents`, `emergency_overrides`. Upgrading an existing (pre-events) database? Run `npm run migrate:events` — it's idempotent and preserves all existing data under an auto-created "Default Event".
+`events`, `event_members`, `users`, `access_levels`, `areas`, `access_assignments`, `scan_logs`, `device_credentials`, `device_tokens`, `device_sync_status`, `incidents`, `emergency_overrides`. After the event migration, run `npm run migrate:phase01` to add QR credential and idempotent queue fields to an existing database.
 
 ## 🧰 Caching (Redis, fail-open)
 
@@ -58,11 +58,8 @@ JWT_REFRESH_EXPIRE_TIME=7d
 ENCRYPTION_KEY=your_32_character_encryption_key
 PEPPER_SECRET=additional_password_security_pepper
 
-# QR Configuration
-QR_CODE_EXPIRE_MINUTES=60
-QR_CODE_REFRESH_INTERVAL=30
-# Must match the hardcoded secret in verigate-pass/verigate-scan's DatabaseService
-QR_HMAC_SECRET=event_secret_key_2024
+# QR authority (base64 PKCS#8 DER P-256 private key; inject as a secret)
+QR_AUTHORITY_PRIVATE_KEY_BASE64=
 
 # Rate Limiting
 RATE_LIMIT_WINDOW_MS=900000
@@ -89,6 +86,7 @@ APNS_PRODUCTION=false
 - `npm start`: Run the compiled JavaScript.
 - `npm run setup:db`: Create a fresh database (full current schema, including events).
 - `npm run migrate:events`: Upgrade an existing pre-events database in place (idempotent).
+- `npm run migrate:phase01`: Add Phase 1 QR/queue contract storage (idempotent).
 - `npm run seed:db`: Populate the database with a demo event + test data.
 - `npm run type-check`: Validate TypeScript types.
 - `npm test`: Run the Jest test suite (route + service tests, mocked DB/Redis).
