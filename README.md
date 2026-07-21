@@ -17,7 +17,7 @@ This is the backend API server for the VeriGate Access Control system.
 
 ## 🗄️ Schema (source of truth: `server/scripts/setup-database.ts`)
 
-`events`, `event_members`, `users`, `access_levels`, `areas`, `access_assignments`, `scan_logs`, `device_credentials`, `device_tokens`, `device_sync_status`, `incidents`, `emergency_overrides`. After the event migration, run `npm run migrate:phase01` to add QR credential and idempotent queue fields to an existing database.
+`events`, `event_members`, `users`, `access_levels`, `areas`, `access_assignments`, `scan_logs`, `device_credentials`, `device_tokens`, `device_sync_status`, `incidents`, `emergency_overrides`. After the event migration, run `npm run migrate:contracts` to add QR credential and idempotent queue fields to an existing database.
 
 ## 🧰 Caching (Redis, fail-open)
 
@@ -86,7 +86,7 @@ APNS_PRODUCTION=false
 - `npm start`: Run the compiled JavaScript.
 - `npm run setup:db`: Create a fresh database (full current schema, including events).
 - `npm run migrate:events`: Upgrade an existing pre-events database in place (idempotent).
-- `npm run migrate:phase01`: Add Phase 1 QR/queue contract storage (idempotent).
+- `npm run migrate:contracts`: Add QR credential and queue contract storage (idempotent).
 - `npm run seed:db`: Populate the database with a demo event + test data.
 - `npm run type-check`: Validate TypeScript types.
 - `npm test`: Run the Jest test suite (route + service tests, mocked DB/Redis).

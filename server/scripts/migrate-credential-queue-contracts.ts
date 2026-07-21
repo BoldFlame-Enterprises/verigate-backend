@@ -29,7 +29,7 @@ async function ensureTimestamptz(client: PoolClient, table: string, column: stri
   }
 }
 
-export async function migratePhase01(client: PoolClient): Promise<void> {
+export async function migrateCredentialQueueContracts(client: PoolClient): Promise<void> {
   await client.query('BEGIN');
   try {
     await client.query(`
@@ -83,8 +83,8 @@ export async function migratePhase01(client: PoolClient): Promise<void> {
 async function main(): Promise<void> {
   const client = await pool.connect();
   try {
-    await migratePhase01(client);
-    console.log('Phase 1 contract migration completed');
+    await migrateCredentialQueueContracts(client);
+    console.log('Credential and queue contract migration completed');
   } finally {
     client.release();
     await pool.end();
@@ -93,7 +93,7 @@ async function main(): Promise<void> {
 
 if (require.main === module) {
   main().catch((error) => {
-    console.error('Phase 1 contract migration failed:', error);
+    console.error('Credential and queue contract migration failed:', error);
     process.exit(1);
   });
 }

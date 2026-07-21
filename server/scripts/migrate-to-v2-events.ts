@@ -4,8 +4,8 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 /**
- * Phase 2 migration: introduces multi-event tenancy on top of a pre-existing
- * (pre-events) database. Safe to run multiple times (every step is
+ * Introduces multi-event tenancy on top of a pre-existing database without
+ * event support. Safe to run multiple times (every step is
  * idempotent). All existing access_levels/areas/access_assignments/scan_logs
  * rows are preserved and attached to an auto-created "Default Event".
  *
@@ -40,7 +40,7 @@ const migrate = async () => {
   const client = await pool.connect();
 
   try {
-    console.log('🚚 Starting Phase 2 (events) migration...');
+    console.log('🚚 Starting multi-event tenancy migration...');
     await client.query('BEGIN');
 
     // 1. Create events / event_members / device_tokens tables if missing.
@@ -204,7 +204,7 @@ const migrate = async () => {
     await client.query('CREATE INDEX IF NOT EXISTS idx_emergency_overrides_event_id ON emergency_overrides(event_id);');
 
     await client.query('COMMIT');
-    console.log('✅ Phase 2 migration completed successfully. All pre-existing data now belongs to "Default Event".');
+    console.log('✅ Multi-event tenancy migration completed successfully. All pre-existing data now belongs to "Default Event".');
   } catch (error) {
     await client.query('ROLLBACK');
     console.error('❌ Migration failed, rolled back:', error);

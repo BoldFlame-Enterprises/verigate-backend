@@ -11,7 +11,7 @@
     "setup:db": "ts-node server/scripts/setup-database.ts",
     "seed:db": "ts-node server/scripts/seed-database.ts",
     "migrate:events": "ts-node server/scripts/migrate-to-v2-events.ts",
-    "migrate:phase01": "ts-node server/scripts/migrate-phase01-contracts.ts",
+    "migrate:contracts": "ts-node server/scripts/migrate-credential-queue-contracts.ts",
     "test": "jest",
     "type-check": "tsc --noEmit"
   },

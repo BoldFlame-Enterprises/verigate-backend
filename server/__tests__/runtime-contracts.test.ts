@@ -5,9 +5,9 @@ import { connectRedis, disconnectRedis, getCache, setCache } from '../config/red
 import syncRouter from '../routes/sync';
 import incidentsRouter from '../routes/incidents';
 
-const runtimeDescribe = process.env.RUN_PHASE01_RUNTIME === 'true' ? describe : describe.skip;
+const runtimeDescribe = process.env.RUN_CONTRACT_RUNTIME === 'true' ? describe : describe.skip;
 
-runtimeDescribe('Phase 1 PostgreSQL and Redis contracts', () => {
+runtimeDescribe('PostgreSQL and Redis runtime contracts', () => {
   let eventA: number;
   let eventB: number;
   let scannerId: number;
@@ -157,9 +157,9 @@ runtimeDescribe('Phase 1 PostgreSQL and Redis contracts', () => {
   });
 
   it('uses Redis when present and fails open after disconnect', async () => {
-    await setCache('phase01:runtime', 'ok', 60);
-    expect(await getCache('phase01:runtime')).toBe('ok');
+    await setCache('contracts:runtime', 'ok', 60);
+    expect(await getCache('contracts:runtime')).toBe('ok');
     await disconnectRedis();
-    expect(await getCache('phase01:runtime')).toBeNull();
+    expect(await getCache('contracts:runtime')).toBeNull();
   });
 });

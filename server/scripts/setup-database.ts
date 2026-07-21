@@ -34,7 +34,7 @@ const createTables = async () => {
       );
     `);
 
-    // Events table (Phase 2: multi-event tenancy). Every access level, area,
+    // Events establish multi-event tenancy. Every access level, area,
     // access assignment and scan log is scoped to exactly one event.
     await client.query(`
       CREATE TABLE IF NOT EXISTS events (
@@ -141,7 +141,7 @@ const createTables = async () => {
       );
     `);
 
-    // Device push tokens (Phase 5b: Android FCM now, iOS APNs gated behind APNS_ENABLED)
+    // Device push tokens support Android FCM and opt-in iOS APNs delivery.
     await client.query(`
       CREATE TABLE IF NOT EXISTS device_tokens (
         id SERIAL PRIMARY KEY,
@@ -234,7 +234,7 @@ const createTables = async () => {
 
     // Seed a default event so a brand-new database always has somewhere for
     // access levels/areas to live, matching the fallback used by the migration
-    // script for pre-existing (pre-Phase-2) databases.
+    // script for databases created before multi-event support.
     await client.query(`
       INSERT INTO events (name, slug, description, is_active)
       VALUES ('Default Event', 'default-event', 'Auto-created default event', true)
