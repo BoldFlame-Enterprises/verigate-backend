@@ -163,11 +163,15 @@ export function verifyPresentation(
   }
 
   try {
-    const authorityKey = crypto.createPublicKey({
-      key: Buffer.from(credential.authority_public_key, 'base64'),
-      format: 'der',
-      type: 'spki',
-    });
+    const authorityKey = authorityKeys().publicKey;
+    const trustedAuthorityBytes = authorityKey.export({ format: 'der', type: 'spki' });
+    const presentedAuthorityBytes = Buffer.from(credential.authority_public_key, 'base64');
+    if (
+      presentedAuthorityBytes.length !== trustedAuthorityBytes.length ||
+      !crypto.timingSafeEqual(presentedAuthorityBytes, trustedAuthorityBytes)
+    ) {
+      return { valid: false, reason: 'Untrusted QR authority' };
+    }
     const authorityValid = crypto.verify(
       'sha256',
       Buffer.from(canonicalize(credential.payload)),

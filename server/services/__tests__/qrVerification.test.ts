@@ -45,26 +45,31 @@ function buildQr(eventId = 1, areaId = 3) {
 describe('verifyQrForArea', () => {
   beforeEach(() => jest.clearAllMocks());
 
-  it('grants only when the current database still authorizes the signed credential', async () => {
+  it('grants only when the current database authorizes the signed credential version', async () => {
+    const query = jest.fn().mockResolvedValue({
+      rows: [{
+        id: 7,
+        name: 'VIP Guest',
+        email: 'vip@test.com',
+        is_active: true,
+        area_id: 3,
+        area_name: 'Main Arena',
+        area_active: true,
+        access_level_name: 'VIP',
+      }],
+    });
     (getDB as jest.Mock).mockReturnValue({
-      query: jest.fn().mockResolvedValue({
-        rows: [{
-          id: 7,
-          name: 'VIP Guest',
-          email: 'vip@test.com',
-          is_active: true,
-          area_id: 3,
-          area_name: 'Main Arena',
-          area_active: true,
-          access_level_name: 'VIP',
-        }],
-      }),
+      query,
     });
 
     const result = await verifyQrForArea(buildQr(), 3, 1);
 
     expect(result.access_granted).toBe(true);
     expect(result.credential_id).toBe('credential-1');
+    expect(query).toHaveBeenCalledWith(
+      expect.stringContaining('dc.credential_version = $6'),
+      [7, 1, 3, 'device-1', expect.any(String), 'v1']
+    );
   });
 
   it('rejects cross-event presentation before database access', async () => {

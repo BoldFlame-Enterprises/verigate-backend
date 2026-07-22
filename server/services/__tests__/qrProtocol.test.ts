@@ -65,6 +65,25 @@ describe('QR protocol v2', () => {
       .toMatch(/authority signature/i);
   });
 
+  it('rejects a credential signed by an untrusted authority', () => {
+    const untrustedAuthority = crypto.generateKeyPairSync('ec', { namedCurve: 'prime256v1' });
+    const value = presentation();
+    value.payload.credential.authority_public_key = untrustedAuthority.publicKey
+      .export({ format: 'der', type: 'spki' })
+      .toString('base64');
+    value.payload.credential.authority_signature = crypto
+      .sign(
+        'sha256',
+        Buffer.from(canonicalize(value.payload.credential.payload)),
+        untrustedAuthority.privateKey
+      )
+      .toString('base64');
+    const resigned = signTestPresentation(value.payload, device.privateKey);
+
+    expect(verifyPresentation(JSON.stringify(resigned), 4, now).reason)
+      .toMatch(/untrusted qr authority/i);
+  });
+
   it('rejects device-presentation mutation', () => {
     const value = presentation();
     value.payload.nonce = 'forged';

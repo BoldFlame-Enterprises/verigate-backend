@@ -4,6 +4,14 @@ import { connectDB, disconnectDB, getDB } from '../config/database';
 import { connectRedis, disconnectRedis, getCache, setCache } from '../config/redis';
 import syncRouter from '../routes/sync';
 import incidentsRouter from '../routes/incidents';
+import {
+  QR_PROTOCOL_VERSION,
+  credentialVersion,
+  createTestDeviceKeyPair,
+  issueAuthorityCredential,
+  signTestPresentation,
+} from '../services/qrProtocol';
+import { verifyQrForArea } from '../services/qrVerification';
 
 const runtimeDescribe = process.env.RUN_CONTRACT_RUNTIME === 'true' ? describe : describe.skip;
 
@@ -112,6 +120,72 @@ runtimeDescribe('PostgreSQL and Redis runtime contracts', () => {
     const attendee = allowed.body.data.users.find((user: any) => user.id === attendeeId);
     expect(attendee.assignments).toHaveLength(2);
     expect(new Set(attendee.assignments.map((assignment: any) => assignment.access_priority))).toEqual(new Set([1, 5]));
+  });
+
+  it('rejects a signed QR after its registered credential version changes', async () => {
+    const db = getDB();
+    const assignmentResult = await db.query(
+      `SELECT a.id AS area_id, a.name AS area_name,
+              al.id AS access_level_id, al.name AS access_level_name, al.priority AS access_priority,
+              aa.valid_from, aa.valid_until
+       FROM access_assignments aa
+       JOIN areas a ON a.id = aa.area_id AND a.event_id = aa.event_id
+       JOIN access_levels al ON al.id = aa.access_level_id AND al.event_id = aa.event_id
+       WHERE aa.event_id = $1 AND aa.user_id = $2 AND aa.area_id = $3`,
+      [eventA, attendeeId, areaA]
+    );
+    const assignments = assignmentResult.rows.map((row) => ({
+      area_id: Number(row.area_id),
+      area_name: row.area_name,
+      access_level_id: Number(row.access_level_id),
+      access_level_name: row.access_level_name,
+      access_priority: Number(row.access_priority),
+      valid_from: new Date(row.valid_from).toISOString(),
+      valid_until: new Date(row.valid_until).toISOString(),
+    }));
+    const device = createTestDeviceKeyPair();
+    const deviceId = `runtime-device-${clientSuffix}`;
+    const version = credentialVersion(assignments);
+    await db.query(
+      `INSERT INTO device_credentials
+         (user_id, event_id, device_id, public_key, credential_version, is_active)
+       VALUES ($1, $2, $3, $4, $5, true)`,
+      [attendeeId, eventA, deviceId, device.publicKeyBase64, version]
+    );
+
+    const now = Date.now();
+    const credential = issueAuthorityCredential({
+      credential_id: `runtime-credential-${clientSuffix}`,
+      credential_version: version,
+      user_id: attendeeId,
+      email: `runtime-attendee-${clientSuffix}@example.com`,
+      name: 'Runtime Attendee',
+      event_id: eventA,
+      device_id: deviceId,
+      device_public_key: device.publicKeyBase64,
+      assignments,
+      issued_at: now - 1_000,
+      expires_at: now + 60_000,
+    });
+    const qrCode = JSON.stringify(signTestPresentation({
+      version: QR_PROTOCOL_VERSION,
+      credential,
+      issued_at: now,
+      expires_at: now + 30_000,
+      nonce: `runtime-nonce-${clientSuffix}`,
+    }, device.privateKey));
+
+    expect((await verifyQrForArea(qrCode, areaA, eventA)).access_granted).toBe(true);
+
+    await db.query(
+      `UPDATE device_credentials
+       SET credential_version = $1, updated_at = NOW()
+       WHERE event_id = $2 AND user_id = $3 AND device_id = $4`,
+      [`replaced-${version}`, eventA, attendeeId, deviceId]
+    );
+    const stale = await verifyQrForArea(qrCode, areaA, eventA);
+    expect(stale.access_granted).toBe(false);
+    expect(stale.reason).toMatch(/revoked|stale/i);
   });
 
   it('returns per-record results and de-duplicates a retry', async () => {

@@ -73,7 +73,7 @@ export async function verifyQrForArea(
        ON al.id = aa.access_level_id AND al.event_id = $2
      JOIN device_credentials dc
        ON dc.user_id = u.id AND dc.event_id = $2 AND dc.device_id = $4
-      AND dc.public_key = $5 AND dc.is_active = true
+      AND dc.public_key = $5 AND dc.credential_version = $6 AND dc.is_active = true
      WHERE u.id = $1`,
     [
       credential.user_id,
@@ -81,6 +81,7 @@ export async function verifyQrForArea(
       areaId,
       credential.device_id,
       credential.device_public_key,
+      credential.credential_version,
     ]
   );
 
