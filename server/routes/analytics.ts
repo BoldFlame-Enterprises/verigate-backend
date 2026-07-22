@@ -4,11 +4,12 @@ import { getDB } from '../config/database';
 import { requireAdmin } from '../middleware/auth';
 import { APIResponse } from '../types';
 import { getCache, setCache } from '../config/redis';
+import { LIVE_CACHE_WINDOW_MS, windowedCacheKey } from '../services/cacheWindow';
 
 const router = Router();
 router.use(requireAdmin);
 
-const ANALYTICS_CACHE_TTL = 60; // seconds
+const ANALYTICS_CACHE_TTL = 15; // seconds; retains three five-second windows
 
 // Scan volume over time (hourly buckets for the last 48h) + peak-time analysis.
 router.get('/scan-volume',
@@ -22,7 +23,7 @@ router.get('/scan-volume',
       }
 
       const eventId = parseInt(req.query.event_id as string, 10);
-      const cacheKey = `analytics:${eventId}:scan-volume`;
+      const cacheKey = windowedCacheKey(`analytics:${eventId}:scan-volume`, LIVE_CACHE_WINDOW_MS);
       const cached = await getCache(cacheKey);
       if (cached) {
         res.json({ success: true, data: JSON.parse(cached) } as APIResponse);
@@ -73,7 +74,7 @@ router.get('/breakdown',
       }
 
       const eventId = parseInt(req.query.event_id as string, 10);
-      const cacheKey = `analytics:${eventId}:breakdown`;
+      const cacheKey = windowedCacheKey(`analytics:${eventId}:breakdown`, LIVE_CACHE_WINDOW_MS);
       const cached = await getCache(cacheKey);
       if (cached) {
         res.json({ success: true, data: JSON.parse(cached) } as APIResponse);

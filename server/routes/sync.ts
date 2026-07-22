@@ -8,7 +8,6 @@ import { getCache, setCache } from '../config/redis';
 import { requireScannerOrAdmin } from '../middleware/auth';
 import { requireEventAccess } from '../middleware/eventAuthorization';
 import { authorityPublicKeyBase64 } from '../services/qrProtocol';
-import { invalidateScanReadCaches } from '../services/scanReadCache';
 
 const router = Router();
 
@@ -298,10 +297,6 @@ router.post('/scan-logs',
           error: 'Temporary persistence failure',
         });
       }
-    }
-
-    if (results.some((item) => item.status === 'accepted')) {
-      await invalidateScanReadCaches(req.event!.id);
     }
 
     const response: APIResponse = {

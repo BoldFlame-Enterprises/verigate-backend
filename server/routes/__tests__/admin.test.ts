@@ -19,6 +19,14 @@ function buildApp() {
 }
 
 describe('GET /api/admin/dashboard', () => {
+  beforeEach(() => {
+    jest.spyOn(Date, 'now').mockReturnValue(12_345);
+  });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
   it('requires event_id', async () => {
     const app = buildApp();
     const res = await request(app).get('/api/admin/dashboard');
@@ -59,6 +67,6 @@ describe('GET /api/admin/dashboard', () => {
     expect(res.body.data.members).toBe(12);
     expect(res.body.data.scans.total).toBe(10);
     expect(res.body.data.scans.grant_rate).toBeCloseTo(0.8);
-    expect(setCache).toHaveBeenCalledWith('event:5:dashboard', expect.any(String), 15);
+    expect(setCache).toHaveBeenCalledWith('event:5:dashboard:2', expect.any(String), 15);
   });
 });

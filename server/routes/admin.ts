@@ -4,14 +4,14 @@ import { getDB } from '../config/database';
 import { requireAdmin } from '../middleware/auth';
 import { APIResponse } from '../types';
 import { getCache, setCache } from '../config/redis';
+import { LIVE_CACHE_WINDOW_MS, windowedCacheKey } from '../services/cacheWindow';
 
 const router = Router();
 
 router.use(requireAdmin);
 
-// Dashboard cache TTL is intentionally short: scans arrive continuously from
-// scanner devices, so we bound staleness with a TTL instead of invalidating
-// on every single scan write (which would defeat the point of caching).
+// Time-windowed keys bound dashboard staleness without making scanner write
+// volume generate Redis invalidation traffic.
 const DASHBOARD_CACHE_TTL = 15; // seconds
 
 // Real dashboard aggregates for a given event.
@@ -26,7 +26,7 @@ router.get('/dashboard',
       }
 
       const eventId = parseInt(req.query.event_id as string, 10);
-      const cacheKey = `event:${eventId}:dashboard`;
+      const cacheKey = windowedCacheKey(`event:${eventId}:dashboard`, LIVE_CACHE_WINDOW_MS);
       const cached = await getCache(cacheKey);
       if (cached) {
         res.json({ success: true, data: JSON.parse(cached) } as APIResponse);

@@ -3,11 +3,9 @@ import request from 'supertest';
 
 jest.mock('../../config/database', () => ({ getDB: jest.fn() }));
 jest.mock('../../services/qrVerification', () => ({ verifyQrForArea: jest.fn() }));
-jest.mock('../../services/scanReadCache', () => ({ invalidateScanReadCaches: jest.fn() }));
 
 import { getDB } from '../../config/database';
 import { verifyQrForArea } from '../../services/qrVerification';
-import { invalidateScanReadCaches } from '../../services/scanReadCache';
 import scanRouter from '../scan';
 
 function buildApp(user?: { id: number; email: string; role: string }) {
@@ -53,7 +51,6 @@ describe('POST /api/scan/verify', () => {
       expect.stringContaining('INSERT INTO scan_logs'),
       expect.arrayContaining([1, 7, 3, 1, true])
     );
-    expect(invalidateScanReadCaches).toHaveBeenCalledWith(1);
   });
 
   it('rejects a caller with role "user" (only scanner/admin may verify)', async () => {

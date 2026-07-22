@@ -19,6 +19,14 @@ function buildApp() {
 }
 
 describe('GET /api/analytics/breakdown', () => {
+  beforeEach(() => {
+    jest.spyOn(Date, 'now').mockReturnValue(12_345);
+  });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
   it('requires event_id', async () => {
     const app = buildApp();
     const res = await request(app).get('/api/analytics/breakdown');
@@ -38,6 +46,6 @@ describe('GET /api/analytics/breakdown', () => {
 
     expect(res.status).toBe(200);
     expect(res.body.data.overall.grant_rate).toBeCloseTo(0.8);
-    expect(setCache).toHaveBeenCalledWith('analytics:5:breakdown', expect.any(String), 60);
+    expect(setCache).toHaveBeenCalledWith('analytics:5:breakdown:2', expect.any(String), 15);
   });
 });
