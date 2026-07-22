@@ -5,6 +5,7 @@ import { requireScannerOrAdmin } from '../middleware/auth';
 import { AuthRequest, APIResponse } from '../types';
 import { verifyQrForArea } from '../services/qrVerification';
 import { requireEventAccess } from '../middleware/eventAuthorization';
+import { invalidateScanReadCaches } from '../services/scanReadCache';
 
 const router = Router();
 
@@ -47,6 +48,7 @@ router.post('/verify',
             JSON.stringify({ source: 'server-fallback', ...(device_info || {}) })
           ]
         );
+        await invalidateScanReadCaches(event_id);
       } catch (logError) {
         console.error('Error logging server-fallback scan:', logError);
       }

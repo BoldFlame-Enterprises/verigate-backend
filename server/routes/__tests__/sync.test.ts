@@ -3,9 +3,11 @@ import request from 'supertest';
 
 jest.mock('../../config/database', () => ({ getDB: jest.fn() }));
 jest.mock('../../config/redis', () => ({ getCache: jest.fn(), setCache: jest.fn() }));
+jest.mock('../../services/scanReadCache', () => ({ invalidateScanReadCaches: jest.fn() }));
 
 import { getDB } from '../../config/database';
 import { getCache, setCache } from '../../config/redis';
+import { invalidateScanReadCaches } from '../../services/scanReadCache';
 import syncRouter from '../sync';
 
 function buildApp(user?: { id: number; email: string; role: string }) {
@@ -101,6 +103,7 @@ describe('POST /api/sync/scan-logs', () => {
     expect(res.body.data.total).toBe(2);
     expect(res.body.data.contract_version).toBe('queue-ack-v2');
     expect(res.body.data.results.map((item: any) => item.status)).toEqual(['accepted', 'duplicate']);
+    expect(invalidateScanReadCaches).toHaveBeenCalledWith(5);
   });
 });
 
