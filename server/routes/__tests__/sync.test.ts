@@ -3,9 +3,14 @@ import request from 'supertest';
 
 jest.mock('../../config/database', () => ({ getDB: jest.fn() }));
 jest.mock('../../config/redis', () => ({ getCache: jest.fn(), setCache: jest.fn() }));
+jest.mock('../../services/scanLogBatch', () => ({
+  MAX_SCAN_UPLOAD_BATCH_SIZE: 500,
+  persistScanLogBatch: jest.fn(),
+}));
 
 import { getDB } from '../../config/database';
 import { getCache, setCache } from '../../config/redis';
+import { persistScanLogBatch } from '../../services/scanLogBatch';
 import syncRouter from '../sync';
 
 function buildApp(user?: { id: number; email: string; role: string }) {
@@ -79,11 +84,12 @@ describe('POST /api/sync/scan-logs', () => {
   });
 
   it('counts processed vs duplicate logs based on ON CONFLICT de-dup', async () => {
-    const query = jest.fn()
-      .mockResolvedValueOnce({ rows: [{ id: 101 }] })
-      .mockResolvedValueOnce({ rows: [] })
-      .mockResolvedValueOnce({ rows: [{ id: 101 }] });
+    const query = jest.fn();
     (getDB as jest.Mock).mockReturnValue({ query });
+    (persistScanLogBatch as jest.Mock).mockResolvedValue([
+      { client_record_id: 'uuid-1', status: 'accepted', server_id: 101 },
+      { client_record_id: 'uuid-1', status: 'duplicate', server_id: 101 },
+    ]);
 
     const app = buildApp({ id: 1, email: 'admin@test.com', role: 'admin' });
     const res = await request(app).post('/api/sync/scan-logs').send({
@@ -101,6 +107,22 @@ describe('POST /api/sync/scan-logs', () => {
     expect(res.body.data.total).toBe(2);
     expect(res.body.data.contract_version).toBe('queue-ack-v2');
     expect(res.body.data.results.map((item: any) => item.status)).toEqual(['accepted', 'duplicate']);
+    expect(persistScanLogBatch).toHaveBeenCalledWith({ query }, expect.objectContaining({
+      eventId: 5,
+      scannerUserId: 1,
+      deviceId: 'device-1',
+    }));
+  });
+
+  it('rejects an oversized batch before querying PostgreSQL', async () => {
+    const app = buildApp({ id: 1, email: 'admin@test.com', role: 'admin' });
+    const res = await request(app).post('/api/sync/scan-logs').send({
+      event_id: 5,
+      logs: Array.from({ length: 501 }, (_, index) => ({ client_record_id: `scan-${index}` })),
+    });
+
+    expect(res.status).toBe(413);
+    expect(persistScanLogBatch).not.toHaveBeenCalled();
   });
 });
 

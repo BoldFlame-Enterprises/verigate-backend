@@ -8,6 +8,7 @@ import { getCache, setCache } from '../config/redis';
 import { requireScannerOrAdmin } from '../middleware/auth';
 import { requireEventAccess } from '../middleware/eventAuthorization';
 import { authorityPublicKeyBase64 } from '../services/qrProtocol';
+import { MAX_SCAN_UPLOAD_BATCH_SIZE, persistScanLogBatch } from '../services/scanLogBatch';
 
 const router = Router();
 
@@ -221,83 +222,21 @@ router.post('/scan-logs',
       res.status(400).json({ success: false, error: 'event_id is required' } as APIResponse);
       return;
     }
+    if (logs.length > MAX_SCAN_UPLOAD_BATCH_SIZE) {
+      res.status(413).json({
+        success: false,
+        error: `A scan upload batch may contain at most ${MAX_SCAN_UPLOAD_BATCH_SIZE} records`,
+      } as APIResponse);
+      return;
+    }
 
     const db = getDB();
-    const results: QueueRecordResult[] = [];
-
-    for (const log of logs) {
-      const clientRecordId = String(log.client_record_id || log.device_scan_id || '');
-      if (!clientRecordId) {
-        results.push({
-          client_record_id: '',
-          status: 'rejected',
-          error: 'client_record_id is required',
-        });
-        continue;
-      }
-      if (Number(log.event_id) !== Number(req.event!.id)) {
-        results.push({
-          client_record_id: clientRecordId,
-          status: 'rejected',
-          error: 'Queued record event_id does not match the authorized event',
-        });
-        continue;
-      }
-
-      try {
-        const result = await db.query(`
-          INSERT INTO scan_logs (
-            event_id, user_id, area_id, scanner_user_id, access_granted,
-            failure_reason, scanned_at, device_info, device_scan_id
-          )
-          SELECT $1, $2, $3, $4, $5, $6, $7, $8, $9
-          WHERE EXISTS (SELECT 1 FROM areas WHERE id = $3 AND event_id = $1)
-          ON CONFLICT (device_scan_id) DO NOTHING
-          RETURNING id
-        `, [
-          req.event!.id,
-          log.user_id,
-          log.area_id,
-          req.user?.id || null,
-          log.access_granted,
-          log.failure_reason,
-          log.scanned_at,
-          JSON.stringify({ device_id, ...log.device_info }),
-          clientRecordId,
-        ]);
-
-        if (result.rows.length > 0) {
-          results.push({
-            client_record_id: clientRecordId,
-            status: 'accepted',
-            server_id: result.rows[0].id,
-          });
-        } else {
-          const duplicate = await db.query(
-            'SELECT id FROM scan_logs WHERE device_scan_id = $1',
-            [clientRecordId]
-          );
-          results.push(duplicate.rows.length > 0
-            ? {
-                client_record_id: clientRecordId,
-                status: 'duplicate',
-                server_id: duplicate.rows[0].id,
-              }
-            : {
-                client_record_id: clientRecordId,
-                status: 'rejected',
-                error: 'area_id does not belong to the authorized event',
-              });
-        }
-      } catch (logError) {
-        console.error('Error inserting scan log:', logError);
-        results.push({
-          client_record_id: clientRecordId,
-          status: 'retryable_error',
-          error: 'Temporary persistence failure',
-        });
-      }
-    }
+    const results: QueueRecordResult[] = await persistScanLogBatch(db, {
+      eventId: req.event!.id,
+      scannerUserId: req.user?.id || null,
+      deviceId: device_id,
+      logs,
+    });
 
     const response: APIResponse = {
       success: true,
