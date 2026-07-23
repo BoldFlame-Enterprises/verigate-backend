@@ -40,8 +40,66 @@ describe('POST /api/incidents', () => {
     });
 
     expect(res.status).toBe(201);
+    expect(res.body.data).toMatchObject({
+      contract_version: 'queue-ack-v2',
+      client_record_id: 'incident-001',
+    });
     expect(res.body.data.status).toBe('accepted');
     expect(res.body.data.record.status).toBe('open');
+  });
+
+  it('returns an explicit duplicate acknowledgement', async () => {
+    const occurredAt = new Date().toISOString();
+    const query = jest.fn()
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [{ id: 1, client_record_id: 'incident-duplicate', occurred_at: occurredAt }] });
+    (getDB as jest.Mock).mockReturnValue({ query });
+
+    const res = await request(buildApp({ id: 2, email: 'admin@test.com', role: 'admin' }))
+      .post('/api/incidents')
+      .send({
+        event_id: 1,
+        description: 'Known incident',
+        client_record_id: 'incident-duplicate',
+        occurred_at: occurredAt,
+      });
+
+    expect(res.status).toBe(200);
+    expect(res.body.data).toMatchObject({
+      contract_version: 'queue-ack-v2',
+      client_record_id: 'incident-duplicate',
+      status: 'duplicate',
+    });
+  });
+
+  it('returns structured rejected and retryable acknowledgements', async () => {
+    const app = buildApp({ id: 2, email: 'admin@test.com', role: 'admin' });
+    const rejected = await request(app).post('/api/incidents').send({
+      event_id: 1,
+      description: '',
+      client_record_id: 'incident-rejected',
+      occurred_at: new Date().toISOString(),
+    });
+    expect(rejected.status).toBe(400);
+    expect(rejected.body.data).toMatchObject({
+      contract_version: 'queue-ack-v2',
+      client_record_id: 'incident-rejected',
+      status: 'rejected',
+    });
+
+    (getDB as jest.Mock).mockReturnValue({ query: jest.fn().mockRejectedValue(new Error('database unavailable')) });
+    const retryable = await request(app).post('/api/incidents').send({
+      event_id: 1,
+      description: 'Retry this incident',
+      client_record_id: 'incident-retryable',
+      occurred_at: new Date().toISOString(),
+    });
+    expect(retryable.status).toBe(500);
+    expect(retryable.body.data).toMatchObject({
+      contract_version: 'queue-ack-v2',
+      client_record_id: 'incident-retryable',
+      status: 'retryable_error',
+    });
   });
 });
 
@@ -99,8 +157,65 @@ describe('POST /api/incidents/overrides', () => {
     });
 
     expect(res.status).toBe(201);
+    expect(res.body.data).toMatchObject({
+      contract_version: 'queue-ack-v2',
+      client_record_id: 'override-002',
+      status: 'accepted',
+    });
     expect(query).toHaveBeenCalledTimes(2);
     expect(query.mock.calls[1][0]).toContain('INSERT INTO scan_logs');
+  });
+
+  it('returns duplicate, rejected, and retryable override acknowledgements', async () => {
+    const occurredAt = new Date().toISOString();
+    const app = buildApp({ id: 2, email: 'admin@test.com', role: 'admin' });
+
+    const duplicateQuery = jest.fn()
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [{ id: 9, client_record_id: 'override-duplicate', occurred_at: occurredAt }] });
+    (getDB as jest.Mock).mockReturnValue({ query: duplicateQuery });
+    const duplicate = await request(app).post('/api/incidents/overrides').send({
+      event_id: 1,
+      area_id: 3,
+      reason: 'Known override',
+      client_record_id: 'override-duplicate',
+      occurred_at: occurredAt,
+    });
+    expect(duplicate.status).toBe(200);
+    expect(duplicate.body.data).toMatchObject({
+      contract_version: 'queue-ack-v2',
+      client_record_id: 'override-duplicate',
+      status: 'duplicate',
+    });
+
+    const rejected = await request(app).post('/api/incidents/overrides').send({
+      event_id: 1,
+      area_id: 3,
+      reason: 'x',
+      client_record_id: 'override-rejected',
+      occurred_at: occurredAt,
+    });
+    expect(rejected.status).toBe(400);
+    expect(rejected.body.data).toMatchObject({
+      contract_version: 'queue-ack-v2',
+      client_record_id: 'override-rejected',
+      status: 'rejected',
+    });
+
+    (getDB as jest.Mock).mockReturnValue({ query: jest.fn().mockRejectedValue(new Error('database unavailable')) });
+    const retryable = await request(app).post('/api/incidents/overrides').send({
+      event_id: 1,
+      area_id: 3,
+      reason: 'Retry this override',
+      client_record_id: 'override-retryable',
+      occurred_at: occurredAt,
+    });
+    expect(retryable.status).toBe(500);
+    expect(retryable.body.data).toMatchObject({
+      contract_version: 'queue-ack-v2',
+      client_record_id: 'override-retryable',
+      status: 'retryable_error',
+    });
   });
 });
 

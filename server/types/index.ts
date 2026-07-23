@@ -120,6 +120,16 @@ export interface QueueRecordResult {
   error?: string;
 }
 
+export const QUEUE_ACK_CONTRACT_VERSION = 'queue-ack-v2' as const;
+
+export interface QueueRecordAcknowledgement<T = unknown> {
+  contract_version: typeof QUEUE_ACK_CONTRACT_VERSION;
+  client_record_id?: string;
+  status: 'accepted' | 'duplicate' | 'retryable_error' | 'rejected';
+  record?: T;
+  validation_errors?: unknown[];
+}
+
 export interface APIResponse<T = any> {
   success: boolean;
   data?: T;

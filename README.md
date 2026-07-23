@@ -8,8 +8,8 @@ This is the backend API server for the VeriGate Access Control system.
 - **QR v2 verification, one path**: the backend signs event/device-bound P-256 credentials and `services/qrVerification.ts` applies signature, expiry, credential-version, event, device, and current DB-assignment checks for both verification routes.
 - **Full CRUD**: users (+ bulk CSV import/export), events, areas, access levels, access assignments, incidents, and emergency overrides.
 - **Redis caching (fail-open)**: hot reads (sync payloads, admin dashboard, analytics) are cached with short TTLs and explicit invalidation on writes; a missing/unreachable Redis degrades to Postgres, never a 500 — see "Caching" below.
-- **Notifications**: Android push is real (Firebase Cloud Messaging via `firebase-admin`); iOS push is fully implemented over raw HTTP/2 + JWT provider tokens but gated behind `APNS_ENABLED` (default off, since it needs a paid Apple Developer account).
-- **Sync hardening**: delta sync (`/api/sync/check-updates`), client-generated `device_scan_id` de-duplication for scan-log uploads, and a `device_sync_status` heartbeat for the dashboard's real-time monitor.
+- **Notifications**: FCM and gated APNs provider integrations exist in source. Pass registers and unregisters its provider token around the authenticated session; delivery still requires correctly configured providers and device validation.
+- **Sync hardening**: foreground clients pull complete event snapshots, scan uploads use client-generated IDs and batch acknowledgements, incident/override uploads use per-record `queue-ack-v2` acknowledgements, and `device_sync_status` feeds the dashboard's polling monitor.
 
 ## 🛠️ Tech Stack
 
@@ -25,11 +25,15 @@ This is the backend API server for the VeriGate Access Control system.
 |---|---|---|
 | `sync:users-database:<event_id>` | 30s | access-level/assignment writes |
 | `sync:areas-database:<event_id>` | 300s | area writes |
-| `event:<event_id>:dashboard` | 15s | TTL only (scans arrive continuously) |
-| `analytics:<event_id>:scan-volume` | 60s | TTL only |
-| `analytics:<event_id>:breakdown` | 60s | area/access-level/assignment writes |
+| `event:<event_id>:dashboard:<5-second-window>` | 15s | rolling window; scans arrive continuously |
+| `analytics:<event_id>:scan-volume:<5-second-window>` | 15s | rolling window |
+| `analytics:<event_id>:breakdown:<5-second-window>` | 15s | rolling window plus area/access-level/assignment invalidation |
 
 If Redis is down, every one of these reads falls straight through to Postgres — `getCache`/`setCache` swallow errors and return `null`/no-op.
+
+## Queue acknowledgement contracts
+
+`POST /api/sync/scan-logs` returns one `queue-ack-v2` result per record. `POST /api/incidents` and `POST /api/incidents/overrides` return an additive per-record envelope containing `contract_version`, `client_record_id`, `status`, and the existing successful `record`. Successful statuses are `accepted` and `duplicate`; validated 4xx failures are `rejected`; unexpected 5xx failures are `retryable_error`. Occurrence time remains client supplied while receipt time is recorded separately by the server.
 
 ## ⚙️ Configuration
 
@@ -105,3 +109,5 @@ APNS_PRODUCTION=false
 - `npm run seed:db`: Replace event/access/scan data with a demo event and test users. A hosted `DATABASE_URL` additionally requires `ALLOW_DATABASE_SEED=true` for that command only.
 - `npm run type-check`: Validate TypeScript types.
 - `npm test`: Run the Jest test suite (route + service tests, mocked DB/Redis).
+
+The checked-in tests and static builds validate source contracts. They do not establish current hosted PostgreSQL/Redis connectivity, provider delivery, physical-device behavior, or iOS operation.

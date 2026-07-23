@@ -185,6 +185,7 @@ coverage/
 # Security
 *.pem
 *.key
+*.p8
 *.crt
 *.csr
 secrets/

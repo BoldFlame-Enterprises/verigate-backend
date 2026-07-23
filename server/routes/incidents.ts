@@ -2,10 +2,34 @@ import { Router, Request, Response } from 'express';
 import { body, query, validationResult } from 'express-validator';
 import { getDB } from '../config/database';
 import { requireAdmin, requireScannerOrAdmin } from '../middleware/auth';
-import { AuthRequest, APIResponse } from '../types';
+import {
+  AuthRequest,
+  APIResponse,
+  QUEUE_ACK_CONTRACT_VERSION,
+  QueueRecordAcknowledgement,
+} from '../types';
 import { requireEventAccess } from '../middleware/eventAuthorization';
 
 const router = Router();
+
+function clientRecordIdFrom(req: Request): string | undefined {
+  const value = req.body?.client_record_id;
+  return typeof value === 'string' && value.trim() ? value.trim() : undefined;
+}
+
+function acknowledgement<T>(
+  req: Request,
+  status: QueueRecordAcknowledgement<T>['status'],
+  extra: Omit<QueueRecordAcknowledgement<T>, 'contract_version' | 'client_record_id' | 'status'> = {}
+): QueueRecordAcknowledgement<T> {
+  const clientRecordId = clientRecordIdFrom(req);
+  return {
+    contract_version: QUEUE_ACK_CONTRACT_VERSION,
+    ...(clientRecordId ? { client_record_id: clientRecordId } : {}),
+    status,
+    ...extra,
+  };
+}
 
 // --- Incident reports (suspicious activity / technical issues) ---
 
@@ -24,7 +48,11 @@ router.post('/',
     try {
       const errors = validationResult(req);
       if (!errors.isEmpty()) {
-        res.status(400).json({ success: false, error: 'Validation failed', data: errors.array() } as APIResponse);
+        res.status(400).json({
+          success: false,
+          error: 'Validation failed',
+          data: acknowledgement(req, 'rejected', { validation_errors: errors.array() }),
+        } as APIResponse);
         return;
       }
 
@@ -51,7 +79,10 @@ router.post('/',
       );
 
       if (result.rows.length > 0) {
-        res.status(201).json({ success: true, data: { status: 'accepted', record: result.rows[0] } } as APIResponse);
+        res.status(201).json({
+          success: true,
+          data: acknowledgement(req, 'accepted', { record: result.rows[0] }),
+        } as APIResponse);
         return;
       }
       const duplicate = await db.query(
@@ -59,13 +90,24 @@ router.post('/',
         [client_record_id]
       );
       if (duplicate.rows.length > 0) {
-        res.json({ success: true, data: { status: 'duplicate', record: duplicate.rows[0] } } as APIResponse);
+        res.json({
+          success: true,
+          data: acknowledgement(req, 'duplicate', { record: duplicate.rows[0] }),
+        } as APIResponse);
         return;
       }
-      res.status(400).json({ success: false, error: 'area_id does not belong to the authorized event' } as APIResponse);
+      res.status(400).json({
+        success: false,
+        error: 'area_id does not belong to the authorized event',
+        data: acknowledgement(req, 'rejected'),
+      } as APIResponse);
     } catch (error) {
       console.error('Error creating incident report:', error);
-      res.status(500).json({ success: false, error: 'Failed to create incident report' } as APIResponse);
+      res.status(500).json({
+        success: false,
+        error: 'Failed to create incident report',
+        data: acknowledgement(req, 'retryable_error'),
+      } as APIResponse);
     }
   }
 );
@@ -154,7 +196,11 @@ router.post('/overrides',
     try {
       const errors = validationResult(req);
       if (!errors.isEmpty()) {
-        res.status(400).json({ success: false, error: 'Validation failed', data: errors.array() } as APIResponse);
+        res.status(400).json({
+          success: false,
+          error: 'Validation failed',
+          data: acknowledgement(req, 'rejected', { validation_errors: errors.array() }),
+        } as APIResponse);
         return;
       }
 
@@ -187,10 +233,17 @@ router.post('/overrides',
           [client_record_id]
         );
         if (duplicate.rows.length > 0) {
-          res.json({ success: true, data: { status: 'duplicate', record: duplicate.rows[0] } } as APIResponse);
+          res.json({
+            success: true,
+            data: acknowledgement(req, 'duplicate', { record: duplicate.rows[0] }),
+          } as APIResponse);
           return;
         }
-        res.status(400).json({ success: false, error: 'area_id does not belong to the authorized event' } as APIResponse);
+        res.status(400).json({
+          success: false,
+          error: 'area_id does not belong to the authorized event',
+          data: acknowledgement(req, 'rejected'),
+        } as APIResponse);
         return;
       }
 
@@ -210,10 +263,17 @@ router.post('/overrides',
         ]
       );
 
-      res.status(201).json({ success: true, data: { status: 'accepted', record: result.rows[0] } } as APIResponse);
+      res.status(201).json({
+        success: true,
+        data: acknowledgement(req, 'accepted', { record: result.rows[0] }),
+      } as APIResponse);
     } catch (error) {
       console.error('Error creating emergency override:', error);
-      res.status(500).json({ success: false, error: 'Failed to create emergency override' } as APIResponse);
+      res.status(500).json({
+        success: false,
+        error: 'Failed to create emergency override',
+        data: acknowledgement(req, 'retryable_error'),
+      } as APIResponse);
     }
   }
 );

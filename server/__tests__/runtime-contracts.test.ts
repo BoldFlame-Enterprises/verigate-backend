@@ -222,6 +222,25 @@ runtimeDescribe('PostgreSQL and Redis runtime contracts', () => {
       occurred_at: occurredAt,
     });
     expect(response.status).toBe(201);
+    expect(response.body.data).toMatchObject({
+      contract_version: 'queue-ack-v2',
+      client_record_id: clientRecordId,
+      status: 'accepted',
+    });
+    const duplicate = await request(app()).post('/api/incidents').send({
+      event_id: eventA,
+      area_id: areaA,
+      category: 'runtime',
+      description: 'Runtime timestamp validation',
+      client_record_id: clientRecordId,
+      occurred_at: occurredAt,
+    });
+    expect(duplicate.status).toBe(200);
+    expect(duplicate.body.data).toMatchObject({
+      contract_version: 'queue-ack-v2',
+      client_record_id: clientRecordId,
+      status: 'duplicate',
+    });
     const row = await getDB().query(
       'SELECT occurred_at, received_at FROM incidents WHERE client_record_id = $1',
       [clientRecordId]
